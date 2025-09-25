@@ -13,13 +13,12 @@ import com.script.rhino.RhinoScriptEngine
 import com.script.rhino.runScriptWithContext
 import io.legado.app.constant.AppConst.UA_NAME
 import io.legado.app.constant.AppPattern
-import io.legado.app.constant.AppPattern.JS_PATTERN
-import io.legado.app.constant.AppPattern.dataUriRegex
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.CacheManager
 import io.legado.app.help.ConcurrentRateLimiter
+import io.legado.app.help.ConcurrentRateLimiter.Companion.updateConcurrentRate
 import io.legado.app.help.JsExtensions
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.exoplayer.ExoPlayerHelper
@@ -55,10 +54,13 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okhttp3.Dns
 import java.io.ByteArrayInputStream
 import java.io.InputStream
+import java.net.InetAddress
 import java.net.URLEncoder
 import java.nio.charset.Charset
+import java.util.Collections
 import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 import kotlin.coroutines.ContinuationInterceptor
@@ -151,7 +153,7 @@ class AnalyzeUrl(
      */
     private fun analyzeJs() {
         var start = 0
-        val jsMatcher = JS_PATTERN.matcher(ruleUrl)
+        val jsMatcher = AppPattern.JS_PATTERN.matcher(ruleUrl)
         var result = ruleUrl
         while (jsMatcher.find()) {
             if (jsMatcher.start() > start) {
@@ -342,6 +344,15 @@ class AnalyzeUrl(
     }
 
     /**
+     * 设置并发率
+     */
+    fun setConcurrent(value: String) {
+        source?.let {
+            updateConcurrentRate(it.getKey(),value)
+        }
+    }
+
+    /**
      * 执行JS
      */
     fun evalJS(jsStr: String, result: Any? = null): Any? {
@@ -457,7 +468,7 @@ class AnalyzeUrl(
                         else -> get(urlNoQuery, encodedQuery)
                     }
                 }.let {
-                    val isXml = it.raw.body?.contentType()?.toString()
+                    val isXml = it.raw.body.contentType()?.toString()
                         ?.matches(AppPattern.xmlContentTypeRegex) == true
                     if (isXml && it.body?.trim()?.startsWith("<?xml", true) == false) {
                         StrResponse(it.raw, "<?xml version=\"1.0\"?>" + it.body)
@@ -511,8 +522,15 @@ class AnalyzeUrl(
 
     private fun getClient(): OkHttpClient {
         val client = getProxyClient(proxy)
-        if (readTimeout == null && callTimeout == null) {
+        val host = extractHostFromUrl(urlNoQuery)
+        if (host.isNullOrEmpty()) return client
+        //val ipAddress = if (isCronet) null else parseCustomHosts(host)//cronet的dns依旧需要这里进行设置
+        val ipAddress = parseCustomHosts(host)
+        if (readTimeout == null && callTimeout == null && ipAddress == null) {
             return client
+        }
+        val dns = ipAddress?.let { ip ->
+            getCachedDns(host, ip)
         }
         return client.newBuilder().run {
             if (readTimeout != null) {
@@ -522,7 +540,62 @@ class AnalyzeUrl(
             if (callTimeout != null) {
                 callTimeout(callTimeout, TimeUnit.MILLISECONDS)
             }
+            if (dns != null) {
+                dns(dns)
+            }
             build()
+        }
+    }
+
+    private fun extractHostFromUrl(url: String): String? {
+        return AppPattern.domainRegex.find(url)?.groupValues?.getOrNull(1)
+    }
+
+    private fun parseCustomHosts(host: String):  List<InetAddress>? {
+        val configMap = AppConfig.hostMap ?: return null
+        val configIps = configMap[host] ?: return null
+        return addressCache.getOrPut(host) {
+                when (configIps) {
+                    is String -> try {
+                        configIps.split(",")
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                            .map { InetAddress.getByName(it) }
+                    } catch (e: Exception) {
+                        log(e)
+                        null
+                    }
+
+                    is List<*> -> configIps.mapNotNull { element ->
+                        val ipStr = when (element) {
+                            is String -> element.trim().takeIf { it.isNotEmpty() }
+                            else -> null
+                        }
+                        ipStr?.let {
+                            try {
+                                InetAddress.getByName(it)
+                            } catch (e: Exception) {
+                                log(e)
+                                null
+                            }
+                        }
+                    }
+
+                    else -> {
+                        log("Unsupported IP format for $host: ${configIps::class.java.simpleName}")
+                        null
+                    }
+                }
+
+        }
+    }
+
+    private fun getCachedDns(host: String, ipAddress: List<InetAddress>): Dns {
+        return dnsCache.getOrPut(host) {
+            Dns { hostname ->
+                if (hostname == host) ipAddress
+                else Dns.SYSTEM.lookup(hostname)
+            }
         }
     }
 
@@ -536,7 +609,7 @@ class AnalyzeUrl(
         if (!urlNoQuery.startsWith("data:")) {
             return null
         }
-        val dataUriFindResult = dataUriRegex.find(urlNoQuery)
+        val dataUriFindResult = AppPattern.dataUriRegex.find(urlNoQuery)
         if (dataUriFindResult != null) {
             val dataUriBase64 = dataUriFindResult.groupValues[1]
             val byteArray = Base64.decode(dataUriBase64, Base64.DEFAULT)
@@ -552,7 +625,7 @@ class AnalyzeUrl(
         getByteArrayIfDataUri()?.let {
             return it
         }
-        return getResponseAwait().body!!.bytes()
+        return getResponseAwait().body.bytes()
     }
 
     fun getByteArray(): ByteArray {
@@ -568,7 +641,7 @@ class AnalyzeUrl(
         getByteArrayIfDataUri()?.let {
             return ByteArrayInputStream(it)
         }
-        return getResponseAwait().body!!.byteStream()
+        return getResponseAwait().body.byteStream()
     }
 
     fun getInputStream(): InputStream {
@@ -666,6 +739,9 @@ class AnalyzeUrl(
         private val pagePattern = Pattern.compile("<(.*?)>")
         private val queryEncoder =
             RFC3986.UNRESERVED.orNew(PercentCodec.of("!$%&()*+,/:;=?@[\\]^`{|}"))
+        private val dnsCache = Collections.synchronizedMap(mutableMapOf<String, Dns>())
+        private val addressCache = Collections.synchronizedMap(mutableMapOf<String, List<InetAddress>?>())
+        private val isCronet: Boolean by lazy {AppConfig.isCronet}
 
         fun AnalyzeUrl.getMediaItem(): MediaItem {
             setCookie()
@@ -831,13 +907,17 @@ class AnalyzeUrl(
 
     data class ConcurrentRecord(
         /**
-         * 是否按频率
-         */
-        val isConcurrent: Boolean,
-        /**
          * 开始访问时间
          */
         var time: Long,
+        /**
+         * 限制次数
+         */
+        var accessLimit : Int,
+        /**
+         * 间隔时间
+         */
+        var interval : Int,
         /**
          * 正在访问的个数
          */

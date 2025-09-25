@@ -6,7 +6,6 @@ import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
-import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.help.CacheManager
 import io.legado.app.help.JsExtensions
 import io.legado.app.help.config.AppConfig
@@ -15,11 +14,13 @@ import io.legado.app.help.http.CookieStore
 import io.legado.app.help.source.getShareScope
 import io.legado.app.utils.GSON
 import io.legado.app.utils.GSONStrict
-import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.has
-import io.legado.app.utils.printOnDebug
 import org.intellij.lang.annotations.Language
+import io.legado.app.help.source.clearExploreKindsCache
+import io.legado.app.model.SharedJsScope.remove
+import io.legado.app.utils.isMainThread
+import kotlinx.coroutines.runBlocking
 
 /**
  * 可在js里调用,source.xxx()
@@ -62,12 +63,6 @@ interface BaseSource : JsExtensions {
 
     override fun getSource(): BaseSource? {
         return this
-    }
-
-    fun loginUi(): List<RowUi>? {
-        return GSON.fromJsonArray<RowUi>(loginUi).onFailure {
-            it.printOnDebug()
-        }.getOrNull()
     }
 
     fun getLoginJs(): String? {
@@ -176,8 +171,9 @@ interface BaseSource : JsExtensions {
         }
     }
 
-    fun getLoginInfoMap(): Map<String, String>? {
-        return GSON.fromJsonObject<Map<String, String>>(getLoginInfo()).getOrNull()
+    fun getLoginInfoMap(): Map<String, String> {
+        val json = getLoginInfo() ?: return mutableMapOf()
+        return GSON.fromJsonObject<Map<String, String>>(json).getOrNull() ?: mutableMapOf()
     }
 
     /**
@@ -231,6 +227,32 @@ interface BaseSource : JsExtensions {
      */
     fun get(key: String): String {
         return CacheManager.get("v_${getKey()}_${key}") ?: ""
+    }
+
+    /**
+     * 刷新发现
+     */
+    fun refreshExplore() {
+        if (isMainThread) {
+            error("refreshExplore must be called on a background thread")
+        }
+        runBlocking {
+            if (this@BaseSource is BookSource) {
+                this@BaseSource.clearExploreKindsCache()
+            }
+        }
+    }
+
+    /**
+     * 刷新JSLib
+     */
+    fun refreshJSLib() {
+        if (isMainThread) {
+            error("refreshJSLib must be called on a background thread")
+        }
+        runBlocking {
+            remove(jsLib)
+        }
     }
 
     /**

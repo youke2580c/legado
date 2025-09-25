@@ -33,6 +33,7 @@
 |title|章节当前标题 String|
 |src| 请求返回的源码|
 |nextChapterUrl|下一章节url|
+|isFromBookInfo|是否为详情页刷新|
 
 ## 当前类对象的可使用的部分方法
 
@@ -52,6 +53,14 @@ java.searchBook(bookName: String)
 
 ```js
 java.addBook(bookUrl: String)
+```
+
+* 打开订阅源界面
+
+```js
+java.open(name: String, url: String)
+java.open(name: String, url: String, title: String)
+name为"sort"打开分类界面、为"rss"打开正文界面
 ```
 
 ### [AnalyzeUrl](https://github.com/gedoor/legado/blob/master/app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeUrl.kt) 部分函数
@@ -141,10 +150,18 @@ java.webViewGetSource(html: String?, url: String?, js: String?, sourceRegex: Str
 * 使用内置浏览器打开链接，可用于获取验证码 手动验证网站防爬
 * @param url 要打开的链接
 * @param title 浏览器的标题
+* @param html 本地html代码
 java.startBrowser(url: String, title: String)
 
+java.startBrowser(url: String, title: String, html: String?)
+
 * 使用内置浏览器打开链接，并等待网页结果 .body()获取网页内容
-java.startBrowserAwait(url: String, title: String, refetchAfterSuccess: Boolean? = true): StrResponse
+* @param refetchAfterSuccess 为false时获取最终展示界面的源码
+java.startBrowserAwait(url: String, title: String): StrResponse
+
+java.startBrowserAwait(url: String, title: String, refetchAfterSuccess: Boolean): StrResponse
+
+java.startBrowserAwait(url: String, title: String, refetchAfterSuccess: Boolean, html: String?): StrResponse
 ```
 * 调试
 ```js
@@ -395,7 +412,6 @@ source.getKey()
 source.setVariable(variable: String?)
 source.getVariable()
 ```
-
 * 登录头操作
 ```js
 获取登录头
@@ -417,6 +433,13 @@ source.getLoginInfoMap().get(key: String)
 清除登录信息
 source.removeLoginInfo()
 ```
+* 书源缓存刷新
+```js
+刷新发现
+source.refreshExplore()
+刷新jslib
+source.refreshJSLib()
+```
 ## cookie对象的部分可用函数
 ```js
 获取全部cookie
@@ -429,6 +452,8 @@ cookie.setCookie(url,cookie)
 cookie.replaceCookie(url,cookie)
 删除cookie
 cookie.removeCookie(url)
+设置内置浏览器cookie
+cookie.setWebCookie(url,cookie)
 ```
 
 ## cache对象的部分可用函数

@@ -75,7 +75,7 @@ fun String?.isTrue(nullIsTrue: Boolean = false): Boolean {
     if (this.isNullOrBlank() || this == "null") {
         return nullIsTrue
     }
-    return !this.trim().matches("(?i)^(false|no|not|0)$".toRegex())
+    return !this.trim().matches("(?i)^(false|no|not|0|0.0)$".toRegex())
 }
 
 fun String.isHex(): Boolean {
@@ -140,3 +140,15 @@ fun String.escapeRegex(): String {
 }
 
 fun String.encodeURI(): String = URLEncodeUtil.encodeQuery(this)
+
+/**
+ * 将字符串加上转义,方便传递字符串到浏览器
+ */
+fun String.escapeForJs(): String {
+    return this.replace("\\", "\\\\")
+        .replace("\"", "\\\"").replace("'", "\\'")
+        .replace("\n", "\\n").replace("\r", "\\r")
+        .replace("\t", "\\t")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+}

@@ -1,7 +1,7 @@
 [versions]
 
-kotlin = "2.1.21"
-ksp = "2.1.21-2.0.1"
+kotlin = "2.2.0"
+ksp = "2.2.0-2.0.2"
 agp = "8.10.1"
 appcompat = "1.7.0"
 colorpicker = "1.1.0"
@@ -17,6 +17,8 @@ hutool = "5.8.22"
 
 libarchive = "1.1.6"
 lifecycle = "2.9.0"
+lyricViewx = "1.3.2"
+soraEditor = "0.23.7"
 glide = "4.16.0"
 gson = "2.13.1"
 jsonPath = "2.9.0"
@@ -31,7 +33,7 @@ material = "1.12.0"
 media = "1.7.0"
 media3 = "1.6.1"
 nanoHttpd = "2.3.1"
-okhttp = "4.12.0"
+okhttp = "5.1.0"
 preference = "1.2.1"
 protobufJavalite = "4.26.1"
 quickChineseTransfer = "0.2.16"
@@ -89,6 +91,9 @@ libarchive = { module = "me.zhanghai.android.libarchive:library", version.ref = 
 lifecycle-common-java8 = { module = "androidx.lifecycle:lifecycle-common-java8", version.ref = "lifecycle" }
 lifecycle-service = { module = "androidx.lifecycle:lifecycle-service", version.ref = "lifecycle" }
 
+lyricViewx = { module = "com.github.Moriafly:LyricViewX", version.ref = "lyricViewx" }
+
+
 media-media = { module = "androidx.media:media", version.ref = "media" }
 media3-datasource-okhttp = { module = "androidx.media3:media3-datasource-okhttp", version.ref = "media3" }
 media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
@@ -128,6 +133,9 @@ avif = { module = "org.aomedia.avif.android:avif", version = "1.1.1.14d8e3c4" }
 glide-svg = { module = "com.github.qoqa:glide-svg", version = "4.0.2" }
 androidsvg = { module = "com.caverock:androidsvg-aar", version = "1.4" }
 
+soraEditor-bom = { module = "io.github.rosemoe:editor-bom", version.ref = "soraEditor" }
+soraEditor-core = { module = "io.github.rosemoe:editor" }
+soraEditor-language-textmate = { module = "io.github.rosemoe:language-textmate" }
 splitties-appctx = { module = "com.louiscad.splitties:splitties-appctx", version.ref = "splitties" }
 splitties-activities = { module = "com.louiscad.splitties:splitties-activities", version.ref = "splitties" }
 splitties-systemservices = { module = "com.louiscad.splitties:splitties-systemservices", version.ref = "splitties" }

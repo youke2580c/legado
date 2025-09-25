@@ -21,8 +21,10 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.utils.GSON
+import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.printOnDebug
@@ -38,24 +40,49 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import splitties.views.onClick
+import kotlin.text.lastIndexOf
+import kotlin.text.startsWith
+import kotlin.text.substring
 
 
 class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
 
     private val binding by viewBinding(DialogLoginBinding::bind)
     private val viewModel by activityViewModels<SourceLoginViewModel>()
+    private var lastClickTime: Long = 0
+
+    companion object {
+        private val loginUiData = mutableMapOf<String, List<RowUi>?>()
+    }
 
     override fun onStart() {
         super.onStart()
         setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        val source = viewModel.source ?: return
-        binding.toolBar.setBackgroundColor(primaryColor)
-        binding.toolBar.title = getString(R.string.login_source, source.getTag())
+    suspend fun evalUiJs(jsStr: String): String? = withContext(IO) {
+        val source = viewModel.source ?: return@withContext null
+        val loginJS = source.getLoginJs() ?: ""
+        try {
+            source.evalJS("$loginJS\n$jsStr") {
+                put("result", source.getLoginInfoMap())
+                put("book", viewModel.book)
+                put("chapter", viewModel.chapter)
+            }.toString()
+        } catch (e: Exception) {
+            AppLog.put(source.getTag() + " loginUi err:" + (e.localizedMessage ?: e.toString()), e)
+            null
+        }
+    }
+
+    fun loginUi(json: String?): List<RowUi>? {
+        return GSON.fromJsonArray<RowUi>(json).onFailure {
+            it.printOnDebug()
+        }.getOrNull()
+    }
+
+    private fun buttonUi(source: BaseSource, loginUi: List<RowUi>?) {
         val loginInfo = source.getLoginInfoMap()
-        val loginUi = source.loginUi()
         loginUi?.forEachIndexed { index, rowUi ->
             when (rowUi.type) {
                 RowUi.Type.text -> ItemSourceEditBinding.inflate(
@@ -66,7 +93,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                     binding.flexbox.addView(it.root)
                     it.root.id = index + 1000
                     it.textInputLayout.hint = rowUi.name
-                    it.editText.setText(loginInfo?.get(rowUi.name))
+                    it.editText.setText(loginInfo[rowUi.name])
                 }
 
                 RowUi.Type.password -> ItemSourceEditBinding.inflate(
@@ -79,7 +106,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                     it.textInputLayout.hint = rowUi.name
                     it.editText.inputType =
                         InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_CLASS_TEXT
-                    it.editText.setText(loginInfo?.get(rowUi.name))
+                    it.editText.setText(loginInfo[rowUi.name])
                 }
 
                 RowUi.Type.button -> ItemFilletTextBinding.inflate(
@@ -92,14 +119,21 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                     it.root.id = index + 1000
                     it.textView.text = rowUi.name
                     it.textView.setPadding(16.dpToPx())
-                    it.root.onClick {
+                    it.root.onClick { it ->
+                        val currentTime = System.currentTimeMillis()
+                        if (currentTime - lastClickTime < 300) {
+                            return@onClick // 按钮300ms防抖
+                        }
+                        lastClickTime = currentTime
+                        it.isSelected = true
+                        it.postDelayed({
+                            it.isSelected = false
+                        }, 120) // 点击动效还原
                         handleButtonClick(source, rowUi, loginUi)
                     }
                 }
             }
         }
-        binding.toolBar.inflateMenu(R.menu.source_login)
-        binding.toolBar.menu.applyTint(requireContext())
         binding.toolBar.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 R.id.menu_ok -> {
@@ -124,6 +158,45 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
         }
     }
 
+    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
+        val source = viewModel.source ?: return
+        val loginUiStr = source.loginUi ?: return
+        val key = if (loginUiStr.length < 1024) {
+            loginUiStr
+        } else {
+            MD5Utils.md5Encode16(loginUiStr)
+        }
+        var loginUi = loginUiData[key]
+        if (loginUi == null) {
+            val jsCode = loginUiStr.let {
+                when {
+                    it.startsWith("@js:") -> it.substring(4)
+                    it.startsWith("<js>") -> it.substring(4, it.lastIndexOf("<"))
+                    else -> null
+                }
+            }
+            if (jsCode != null) {
+                lifecycleScope.launch(Main) {
+                    loginUi = loginUi(evalUiJs(jsCode))
+                    buttonUi(source, loginUi)
+                    loginUiData[key] = loginUi
+                }
+            }
+            else {
+                loginUi = loginUi(loginUiStr)
+                buttonUi(source, loginUi)
+                loginUiData[key] = loginUi
+            }
+        }
+        else {
+            buttonUi(source, loginUi)
+        }
+        binding.toolBar.setBackgroundColor(primaryColor)
+        binding.toolBar.title = getString(R.string.login_source, source.getTag())
+        binding.toolBar.inflateMenu(R.menu.source_login)
+        binding.toolBar.menu.applyTint(requireContext())
+    }
+
     private fun handleButtonClick(source: BaseSource, rowUi: RowUi, loginUi: List<RowUi>) {
         lifecycleScope.launch(IO) {
             if (rowUi.action.isAbsUrl()) {
@@ -136,6 +209,8 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                     runScriptWithContext {
                         source.evalJS("$loginJS\n$buttonFunctionJS") {
                             put("result", getLoginData(loginUi))
+                            put("book", viewModel.book)
+                            put("chapter", viewModel.chapter)
                         }
                     }
                 }.onFailure { e ->
