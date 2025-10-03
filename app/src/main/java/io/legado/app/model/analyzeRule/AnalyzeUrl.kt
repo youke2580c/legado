@@ -57,10 +57,8 @@ import okhttp3.Response
 import okhttp3.Dns
 import java.io.ByteArrayInputStream
 import java.io.InputStream
-import java.net.InetAddress
 import java.net.URLEncoder
 import java.nio.charset.Charset
-import java.util.Collections
 import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 import kotlin.coroutines.ContinuationInterceptor
@@ -479,6 +477,52 @@ class AnalyzeUrl(
         }
     }
 
+    /**
+     * 测试网址连接,返回带响应时间的StrResponse
+     * 只有get请求,用来测试网站可用性
+     */
+    suspend fun getStrResponseAwait2(): StrResponse {
+        if (type != null) {
+            return StrResponse(url, HexUtil.encodeHexStr(getByteArrayAwait()))
+        }
+        concurrentRateLimiter.withLimit {
+            setCookie()
+            val startTime = System.currentTimeMillis()
+            return try {
+                val strResponse: StrResponse = getClient().newCallStrResponse(retry) {
+                    addHeaders(headerMap)
+                    get(urlNoQuery, encodedQuery)
+                }.let {
+                    val connectionTime = System.currentTimeMillis() - startTime
+                    it.putCallTime(connectionTime.toInt())
+                    val isXml = it.raw.body.contentType()?.toString()
+                        ?.matches(AppPattern.xmlContentTypeRegex) == true
+                    if (isXml && it.body?.trim()?.startsWith("<?xml", true) == false) {
+                        StrResponse(it.raw, "<?xml version=\"1.0\"?>" + it.body)
+                    } else it
+                }
+                strResponse
+            } catch (e: Exception) {
+                val errorCode = when (e) {
+                    is java.net.SocketTimeoutException -> -2  // 超时错误
+                    is java.net.UnknownHostException -> -3   // 未找到域名
+                    is java.net.ConnectException -> -4       // 连接被拒绝
+                    is java.net.SocketException -> -5        // Socket错误（包括连接重置）
+                    is javax.net.ssl.SSLException -> -6      // SSL证书或握手错误
+                    is java.io.InterruptedIOException -> {
+                        if (e.message?.contains("timeout") == true) {
+                            -1  // 超过设定时间
+                        } else -7
+                    }
+                    else -> -7  // 其它错误
+                }
+                return StrResponse(url, e.message).apply {
+                    putCallTime(errorCode)
+                }
+            }
+        }
+    }
+
     @JvmOverloads
     fun getStrResponse(
         jsStr: String? = null,
@@ -524,13 +568,9 @@ class AnalyzeUrl(
         val client = getProxyClient(proxy)
         val host = extractHostFromUrl(urlNoQuery)
         if (host.isNullOrEmpty()) return client
-        //val ipAddress = if (isCronet) null else parseCustomHosts(host)//cronet的dns依旧需要这里进行设置
-        val ipAddress = parseCustomHosts(host)
-        if (readTimeout == null && callTimeout == null && ipAddress == null) {
+        val hasDns = AppConfig.addressCache[host] != null
+        if (readTimeout == null && callTimeout == null && !hasDns) {
             return client
-        }
-        val dns = ipAddress?.let { ip ->
-            getCachedDns(host, ip)
         }
         return client.newBuilder().run {
             if (readTimeout != null) {
@@ -540,8 +580,11 @@ class AnalyzeUrl(
             if (callTimeout != null) {
                 callTimeout(callTimeout, TimeUnit.MILLISECONDS)
             }
-            if (dns != null) {
-                dns(dns)
+            if (hasDns) {
+                dns { hostname ->
+                    val cachedAddress = AppConfig.addressCache[hostname]
+                    cachedAddress ?: Dns.SYSTEM.lookup(hostname)
+                }
             }
             build()
         }
@@ -551,53 +594,6 @@ class AnalyzeUrl(
         return AppPattern.domainRegex.find(url)?.groupValues?.getOrNull(1)
     }
 
-    private fun parseCustomHosts(host: String):  List<InetAddress>? {
-        val configMap = AppConfig.hostMap ?: return null
-        val configIps = configMap[host] ?: return null
-        return addressCache.getOrPut(host) {
-                when (configIps) {
-                    is String -> try {
-                        configIps.split(",")
-                            .map { it.trim() }
-                            .filter { it.isNotEmpty() }
-                            .map { InetAddress.getByName(it) }
-                    } catch (e: Exception) {
-                        log(e)
-                        null
-                    }
-
-                    is List<*> -> configIps.mapNotNull { element ->
-                        val ipStr = when (element) {
-                            is String -> element.trim().takeIf { it.isNotEmpty() }
-                            else -> null
-                        }
-                        ipStr?.let {
-                            try {
-                                InetAddress.getByName(it)
-                            } catch (e: Exception) {
-                                log(e)
-                                null
-                            }
-                        }
-                    }
-
-                    else -> {
-                        log("Unsupported IP format for $host: ${configIps::class.java.simpleName}")
-                        null
-                    }
-                }
-
-        }
-    }
-
-    private fun getCachedDns(host: String, ipAddress: List<InetAddress>): Dns {
-        return dnsCache.getOrPut(host) {
-            Dns { hostname ->
-                if (hostname == host) ipAddress
-                else Dns.SYSTEM.lookup(hostname)
-            }
-        }
-    }
 
     fun getResponse(): Response {
         return runBlocking(coroutineContext) {
@@ -739,8 +735,6 @@ class AnalyzeUrl(
         private val pagePattern = Pattern.compile("<(.*?)>")
         private val queryEncoder =
             RFC3986.UNRESERVED.orNew(PercentCodec.of("!$%&()*+,/:;=?@[\\]^`{|}"))
-        private val dnsCache = Collections.synchronizedMap(mutableMapOf<String, Dns>())
-        private val addressCache = Collections.synchronizedMap(mutableMapOf<String, List<InetAddress>?>())
         private val isCronet: Boolean by lazy {AppConfig.isCronet}
 
         fun AnalyzeUrl.getMediaItem(): MediaItem {

@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.FileDataSource
 import androidx.media3.datasource.ResolvingDataSource
@@ -29,6 +30,7 @@ import java.util.concurrent.TimeUnit
 @Suppress("unused")
 @SuppressLint("UnsafeOptInUsageError")
 object ExoPlayerHelper {
+    private var exoPlayer: ExoPlayer? = null
 
     private const val SPLIT_TAG = "\uD83D\uDEA7"
 
@@ -38,7 +40,11 @@ object ExoPlayerHelper {
 
     fun createMediaItem(url: String, headers: Map<String, String>): MediaItem {
         val formatUrl = url + SPLIT_TAG + GSON.toJson(headers, mapType)
-        return MediaItem.Builder().setUri(formatUrl).build()
+        val mediaItemBuilder = MediaItem.Builder().setUri(formatUrl)
+        if (url.contains(".m3u8")) {
+            mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
+        }
+        return mediaItemBuilder.build()
     }
 
     fun createHttpExoPlayer(context: Context): ExoPlayer {
@@ -49,12 +55,24 @@ object ExoPlayerHelper {
                 DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS / 10,
                 DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS / 10
             ).build()
-
         ).setMediaSourceFactory(
             DefaultMediaSourceFactory(context)
                 .setDataSourceFactory(resolvingDataSource)
                 .setLiveTargetOffsetMs(5000)
         ).build()
+    }
+
+    fun getExoPlayer(context: Context): ExoPlayer {
+        if (exoPlayer == null) {
+            val appContext = context.applicationContext
+            exoPlayer = createHttpExoPlayer(appContext)
+        }
+        return exoPlayer!!
+    }
+
+    fun release() {
+        exoPlayer?.release()
+        exoPlayer = null
     }
 
 

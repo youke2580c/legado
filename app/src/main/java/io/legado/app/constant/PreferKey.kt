@@ -9,6 +9,7 @@ object PreferKey {
     const val customHosts = "customHosts"
     const val editTheme = "editTheme"
     const val showUnread = "showUnread"
+    const val showBookname = "showBookname"
     const val bookGroupStyle = "bookGroupStyle"
     const val useDefaultCover = "useDefaultCover"
     const val loadCoverOnlyWifi = "loadCoverOnlyWifi"
@@ -188,4 +189,5 @@ object PreferKey {
     const val contentSelectSpeakMod = "contentReadAloudMod"
     const val editFontScale = "editFontScale"
     const val editAutoWrap = "editAutoWrap"
+    const val editAutoComplete = "editAutoComplete"
 }

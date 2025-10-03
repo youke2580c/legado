@@ -18,6 +18,7 @@ import io.legado.app.help.http.CookieManager.cookieJarHeader
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.http.SSLHelper
 import io.legado.app.help.http.StrResponse
+import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.help.source.getSourceType
 import io.legado.app.model.Debug
@@ -124,6 +125,23 @@ interface JsExtensions : JsEncodeUtils {
     }
 
     /**
+     * 并发测试网络
+     */
+    fun ajaxTestAll(urlList: Array<String>, timeout: Int): Array<StrResponse> {
+        return runBlocking(context) {
+            urlList.asFlow().mapAsync(AppConfig.threadCount) { url ->
+                val analyzeUrl = AnalyzeUrl(
+                    url,
+                    source = getSource(),
+                    coroutineContext = coroutineContext,
+                    callTimeout = timeout.toLong()
+                )
+                analyzeUrl.getStrResponseAwait2()
+            }.flowOn(IO).toList().toTypedArray()
+        }
+    }
+
+    /**
      * 访问网络,返回Response<String>
      */
     fun connect(urlStr: String): StrResponse {
@@ -223,6 +241,16 @@ interface JsExtensions : JsEncodeUtils {
                 overrideUrlRegex = overrideUrlRegex
             ).getStrResponse().body
         }
+    }
+
+    /**
+     * 打开内置视频播放器
+     * @param url 视频播放连接
+     * @param title 视频的标题
+     * @param float 是否悬浮窗打开
+     */
+    fun openVideoPlayer(url: String, title: String, float: Boolean) {
+        SourceHelp.openVideoPlayer(getSource(), url, title, float)
     }
 
     /**

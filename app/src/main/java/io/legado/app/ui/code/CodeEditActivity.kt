@@ -7,11 +7,13 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.widget.EditText
 import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
 import androidx.core.view.isGone
 import androidx.core.widget.addTextChangedListener
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.textfield.TextInputEditText
 import io.github.rosemoe.sora.event.PublishSearchResultEvent
 import io.github.rosemoe.sora.event.SelectionChangeEvent
 import io.github.rosemoe.sora.langs.textmate.registry.ThemeRegistry
@@ -66,7 +68,7 @@ class CodeEditActivity :
         viewModel.initData(intent) {
             editor.apply {
                 setEditorLanguage(viewModel.language)
-                upEdit()
+                upEdit(AppConfig.editFontScale, null, AppConfig.editAutoWrap)
                 setText(viewModel.initialText)
                 if (!viewModel.writable) {
                     editor.editable = false
@@ -114,9 +116,17 @@ class CodeEditActivity :
         }
     }
 
-    override fun upEdit() {
-        editor.isWordwrap = AppConfig.editAutoWrap
-        editor.setTextSize(AppConfig.editFontScale.toFloat())
+    override fun upEdit(fontSize: Int?, autoComplete: Boolean?, autoWarp: Boolean?) {
+        if (fontSize != null) {
+            editor.setTextSize(fontSize.toFloat())
+        }
+        if (autoComplete != null) {
+            viewModel.language?.isAutoCompleteEnabled = autoComplete
+            editor.setEditorLanguage(viewModel.language)
+        }
+        if (autoWarp != null) {
+            editor.isWordwrap = autoWarp
+        }
     }
 
     override fun upTheme(index: Int) {
@@ -232,9 +242,9 @@ class CodeEditActivity :
             R.id.menu_change_theme -> showDialogFragment(ChangeThemeDialog(this))
             R.id.menu_config_settings -> showDialogFragment(SettingsDialog(this))
             R.id.menu_auto_wrap -> {
-                putPrefBoolean(PreferKey.editAutoWrap, !AppConfig.editAutoWrap)
                 item.isChecked = !AppConfig.editAutoWrap
-                upEdit()
+                upEdit(null, null, !AppConfig.editAutoWrap)
+                putPrefBoolean(PreferKey.editAutoWrap, !AppConfig.editAutoWrap)
             }
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }
@@ -262,7 +272,22 @@ class CodeEditActivity :
     }
 
     override fun sendText(text: String) {
-        editor.insertText(text, text.length)
+        val view = window.decorView.findFocus()
+        if (view is TextInputEditText) {
+            val start = view.selectionStart
+            val end = view.selectionEnd
+            if (text.isNotEmpty()) {
+                val edit = view.editableText//获取EditText的文字
+                if (start < 0 || start >= edit.length) {
+                    edit.append(text)
+                } else {
+                    edit.replace(start, end, text)//光标所在位置插入文字
+                }
+            }
+        }
+        else {
+            editor.insertText(text, text.length)
+        }
     }
 
     @RequiresApi(Build.VERSION_CODES.M)

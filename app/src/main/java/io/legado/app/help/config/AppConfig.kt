@@ -22,6 +22,7 @@ import io.legado.app.utils.removePref
 import io.legado.app.utils.sysConfiguration
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
+import java.net.InetAddress
 
 @Suppress("MemberVisibilityCanBePrivate", "ConstPropertyName")
 object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
@@ -46,13 +47,15 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var optimizeRender = CanvasRecorderFactory.isSupport
             && appCtx.getPrefBoolean(PreferKey.optimizeRender, false)
     var recordLog = appCtx.getPrefBoolean(PreferKey.recordLog)
-    var editFontScale = appCtx.getPrefInt(PreferKey.editFontScale, 18)
+    var editFontScale = appCtx.getPrefInt(PreferKey.editFontScale, 16)
     var editAutoWrap = appCtx.getPrefBoolean(PreferKey.editAutoWrap, true)
+    var editAutoComplete = appCtx.getPrefBoolean(PreferKey.editAutoComplete, true)
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         when (key) {
-            PreferKey.editFontScale -> editFontScale = appCtx.getPrefInt(PreferKey.editFontScale, 18)
+            PreferKey.editFontScale -> editFontScale = appCtx.getPrefInt(PreferKey.editFontScale, 16)
             PreferKey.editAutoWrap -> editAutoWrap = appCtx.getPrefBoolean(PreferKey.editAutoWrap, true)
+            PreferKey.editAutoComplete -> editAutoComplete = appCtx.getPrefBoolean(PreferKey.editAutoComplete, true)
 
             PreferKey.themeMode -> {
                 themeMode = appCtx.getPrefString(PreferKey.themeMode, "0")
@@ -97,6 +100,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             PreferKey.customHosts -> {
                 customHosts = appCtx.getPrefString(PreferKey.customHosts) ?: ""
                 hostMap = GSON.fromJsonObject<Map<String, Any?>>(customHosts).getOrNull()
+                _addressCache = null
             }
 
             PreferKey.editTheme -> editTheme = appCtx.getPrefInt(PreferKey.editTheme, 0)
@@ -114,6 +118,34 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
     }
 
+    //dns配置
+    private var _addressCache: Map<String, List<InetAddress>>? = null
+    val addressCache: Map<String, List<InetAddress>>
+        get() = _addressCache ?: run {
+            val cache = hostMap?.mapNotNull { (host, ipValue) ->
+                val addresses = when (ipValue) {
+                    is String -> ipValue.parseIpsFromString()
+                    is List<*> -> ipValue.parseIpsFromList()
+                    else -> null
+                }
+                addresses?.let { host to it }
+            }?.toMap() ?: emptyMap()
+            _addressCache = cache
+            cache
+        }
+    private fun String.parseIpsFromString(): List<InetAddress>? =
+        split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .mapNotNull { it.runCatching { InetAddress.getByName(this) }.getOrNull() }
+            .takeIf { it.isNotEmpty() }
+    private fun List<*>.parseIpsFromList(): List<InetAddress> =
+        mapNotNull { element ->
+            (element as? String)?.trim()?.takeIf { it.isNotEmpty() }
+                ?.runCatching { InetAddress.getByName(this) }
+                ?.getOrNull()
+        }
+
     var isNightTheme: Boolean
         get() = when (themeMode) {
             "1" -> false
@@ -129,6 +161,11 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                     appCtx.putPrefString(PreferKey.themeMode, "1")
                 }
             }
+        }
+    var showBookname: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.showBookname, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.showBookname, value)
         }
 
     var showUnread: Boolean

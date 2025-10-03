@@ -24,7 +24,7 @@
 
 > `1000` 访问间隔1s  
 > `20/60000` 60s内访问次数20  
-> `java.setConcurrent(str: String)` 设置并发率
+> `java.setConcurrent(str: String)` 更改并发率(书源的并发率规则不为空时才生效)
 
 * 书源类型: 文件
 > 对于类似知轩藏书提供文件整合下载的网站，可以在书源详情的下载URL规则获取文件链接
@@ -44,7 +44,8 @@
 [
     {
         "name": "telephone",
-        "type": "text"
+        "type": "text",
+        "default": "123"
     },
     {
         "name": "password",
@@ -66,6 +67,17 @@
             "layout_flexBasisPercent": -1,
             "layout_wrapBefore": false
         }
+    },
+    {
+        "name": "评论开关",
+        "type": "toggle",
+        "chars": ["❎", "☑️"],
+        "default": "☑️"
+    },
+    {
+        "name": "显示书名",
+        "viewName": "book?.name||'未获取到书名'",
+        "type": "button"
     }
 ]
 ```
