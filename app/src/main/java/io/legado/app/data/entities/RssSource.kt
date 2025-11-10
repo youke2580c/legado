@@ -49,7 +49,7 @@ data class RssSource(
     /**是否单url源**/
     var singleUrl: Boolean = false,
     /*列表规则*/
-    /**列表样式,0,1,2**/
+    /**列表样式,0,1,2,3**/
     @ColumnInfo(defaultValue = "0")
     var articleStyle: Int = 0,
     /**列表规则**/
@@ -98,7 +98,15 @@ data class RssSource(
     @ColumnInfo(defaultValue = "0")
     var lastUpdateTime: Long = 0,
     @ColumnInfo(defaultValue = "0")
-    var customOrder: Int = 0
+    var customOrder: Int = 0,
+    /**类型 0网页，1图片，2视频**/
+    @ColumnInfo(defaultValue = "0")
+    var type: Int = 0,
+    /**是否启用预加载**/
+    @ColumnInfo(defaultValue = "0")
+    var preload: Boolean = false,
+    /**搜索url**/
+    var searchUrl: String? = null
 ) : Parcelable, BaseSource {
 
     override fun getTag(): String {

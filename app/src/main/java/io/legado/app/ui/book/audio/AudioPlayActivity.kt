@@ -52,9 +52,10 @@ import kotlinx.coroutines.withContext
 import splitties.views.onLongClick
 import java.util.Locale
 import io.legado.app.ui.book.audio.config.AudioSkipCredits
-import android.graphics.Color
 import android.view.View
 import com.dirror.lyricviewx.OnPlayClickListener
+import io.legado.app.lib.theme.ThemeStore.Companion.accentColor
+import io.legado.app.ui.book.source.SourceCallBack
 
 /**
  * 音频播放
@@ -73,6 +74,7 @@ class AudioPlayActivity :
     private var playMode = AudioPlay.PlayMode.LIST_END_STOP
     private val lyricViewX by lazy { binding.lyricViewX }
     private var lyricOn = false
+    private var menuCustomBtn: MenuItem? = null
 
     private val progressTimeFormat by lazy {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -100,22 +102,22 @@ class AudioPlayActivity :
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.titleBar.setBackgroundResource(R.color.transparent)
         AudioPlay.register(this)
-        viewModel.titleData.observe(this) {
-            binding.titleBar.title = it
+        viewModel.titleData.observe(this) { name ->
+            binding.titleBar.title = name
+            val lyric = AudioPlay.durChapter?.getVariable("lyric")?.takeIf { it.isNotBlank() }
+            upLyric(lyric ?: AudioPlay.durLyric)
         }
         viewModel.coverData.observe(this) {
             upCover(it)
         }
-        viewModel.bookUrl.observe(this) {
-            val targetChapter = appDb.bookChapterDao.getChapter(it, AudioPlay.durChapterIndex)
-            upLyric(it, targetChapter?.lyric?:AudioPlay.durLyric)
-        }
+        viewModel.customBtnListData.observe(this) { menuCustomBtn?.isVisible = it }
         viewModel.initData(intent)
         initView()
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.audio_play, menu)
+        menuCustomBtn = menu.findItem(R.id.menu_custom_btn)
         return super.onCompatCreateOptionsMenu(menu)
     }
 
@@ -127,6 +129,13 @@ class AudioPlayActivity :
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
+            R.id.menu_custom_btn -> {
+                AudioPlay.bookSource?.customButton?.let {
+                    AudioPlay.book?.let { book ->
+                        SourceCallBack.callBackBtn(this,SourceCallBack.CLICK_CUSTOM_BUTTON, AudioPlay.bookSource, book, null)
+                    }
+                }
+            }
             R.id.menu_change_source -> AudioPlay.book?.let {
                 showDialogFragment(ChangeBookSourceDialog(it.name, it.author))
             }
@@ -225,40 +234,32 @@ class AudioPlayActivity :
         }.into(binding.ivCover)
     }
 
-    override fun upLyric(bookUrl: String, lyric: String?) {
-        if (lyric != null) {
-            if (lyricOn) {
-                appDb.bookDao.getBook(bookUrl)?.let {
-                    upLyricP(it.durChapterPos)
-                }
-            }
-            else {
-                lyricOn = true
-                binding.lyricViewX.visibility = View.VISIBLE
-                if (lyric.startsWith("http")) {
-                    lyricViewX.loadLyricByUrl(lyric)
-                } else {
-                    lyricViewX.loadLyric(lyric)
-                }
-                lyricViewX.apply {
-                    setNormalTextSize(50F)
-                    setCurrentTextSize(60F)
-                    setCurrentColor(Color.rgb(255, 255, 255))
-                    setTimelineTextColor(Color.rgb(255, 100, 100))
-                    setDraggable(true, object : OnPlayClickListener {
-                        override fun onPlayClick(time: Long): Boolean {
-                            AudioPlay.adjustProgress(time.toInt())
-                            playButton(false)
-                            return true
-                        }
-                    })
-                }
-                lyricViewX.postDelayed({
-                    appDb.bookDao.getBook(bookUrl)?.let {
-                        upLyricP(it.durChapterPos)
+    override fun upLyric(lyric: String?) {
+        if(lyric.isNullOrBlank()) {
+            binding.lyricViewX.visibility = View.GONE
+            return
+        }
+        binding.lyricViewX.visibility = View.VISIBLE
+        lyricViewX.loadLyric(lyric)
+        if (lyricOn) {
+            upLyricP(AudioPlay.durChapterPos)
+        } else {
+            lyricOn = true
+            lyricViewX.apply {
+                setNormalTextSize(50F)
+                setCurrentTextSize(60F)
+                setTimelineTextColor(accentColor)
+                setDraggable(true, object : OnPlayClickListener {
+                    override fun onPlayClick(time: Long): Boolean {
+                        AudioPlay.adjustProgress(time.toInt())
+                        playButton(false)
+                        return true
                     }
-                }, 100)
+                })
             }
+            lyricViewX.postDelayed({
+                upLyricP(AudioPlay.durChapterPos)
+            }, 100)
         }
     }
     override fun upLyricP(position: Int) {
@@ -267,14 +268,16 @@ class AudioPlayActivity :
 
     private fun playButton(noLyr: Boolean = true) {
         val status = AudioPlay.status
-        if (status == Status.PLAY && noLyr) {
-            AudioPlay.pause(this)
-        }
-        else if(status == Status.PAUSE){
-            AudioPlay.resume(this)
-        }
-        else {
-            AudioPlay.loadOrUpPlayUrl()
+        when (status) {
+            Status.PLAY if noLyr -> {
+                AudioPlay.pause(this)
+            }
+            Status.PAUSE -> {
+                AudioPlay.resume(this)
+            }
+            else -> {
+                AudioPlay.loadOrUpPlayUrl()
+            }
         }
     }
 

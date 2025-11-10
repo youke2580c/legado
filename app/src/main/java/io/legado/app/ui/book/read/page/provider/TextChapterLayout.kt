@@ -30,15 +30,19 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import java.util.LinkedList
-import kotlin.coroutines.coroutineContext
 import kotlin.math.roundToInt
 import android.util.Size
 import io.legado.app.constant.AppPattern.noWordCountRegex
 import io.legado.app.data.appDb
 import io.legado.app.help.book.isOnLineTxt
+import io.legado.app.ui.book.read.page.provider.ChapterProvider.reviewChar
+import io.legado.app.ui.book.read.page.provider.ChapterProvider.srcReplaceChar
+import io.legado.app.ui.book.read.page.provider.ChapterProvider.srcReplaceCharC
+import io.legado.app.ui.book.read.page.provider.ChapterProvider.srcReplaceCharD
 import io.legado.app.utils.StringUtils
 
 class TextChapterLayout(
@@ -114,6 +118,8 @@ class TextChapterLayout(
         }.onError {
             exception = it
             onException(it)
+        }.onCancel {
+            channel.cancel()
         }.onFinally {
             isCompleted = true
         }
@@ -208,14 +214,14 @@ class TextChapterLayout(
             //标题非隐藏
             displayTitle.splitNotBlank("\n").forEach { text ->
                 val srcList = LinkedList<String>()
-                val reviewImg = bookChapter.reviewImg
+                val reviewImg = bookChapter.imgUrl
                 var reviewTxt = ""
-                if (reviewImg != null) {
+                if (!reviewImg.isNullOrEmpty()) {
                     srcList.add(reviewImg)
                     reviewTxt = if (reviewImg.contains("TEXT")) {
-                        ChapterProvider.reviewChar
+                        reviewChar
                     } else {
-                        ChapterProvider.srcReplaceChar
+                        srcReplaceChar
                     }
                 }
                 setTypeText(
@@ -245,17 +251,17 @@ class TextChapterLayout(
         var isSetTypedImage = false
         var wordCount = 0
         contents.forEach { content ->
-            coroutineContext.ensureActive()
+            currentCoroutineContext().ensureActive()
+            var text = content.replace(srcReplaceCharC, srcReplaceCharD)
             if (isTextImageStyle) {
                 //图片样式为文字嵌入类型
-                var text = content.replace(ChapterProvider.srcReplaceChar, "丨") //▣
                 val srcList = LinkedList<String>()
                 sb.setLength(0)
                 val matcher = AppPattern.imgPattern.matcher(text)
                 while (matcher.find()) {
                     matcher.group(1)?.let { src ->
                         srcList.add(src)
-                        matcher.appendReplacement(sb, ChapterProvider.srcReplaceChar)
+                        matcher.appendReplacement(sb, srcReplaceChar)
                     }
                 }
                 matcher.appendTail(sb)
@@ -280,10 +286,9 @@ class TextChapterLayout(
                 sb.setLength(0)
                 var isFirstLine = true
                 if (content.contains("<img")) {
-                    val text = content.replace(ChapterProvider.srcReplaceChar, "丨")
                     val matcher = AppPattern.imgPattern.matcher(text)
                     while (matcher.find()) {
-                        coroutineContext.ensureActive()
+                        currentCoroutineContext().ensureActive()
                         val imgSrc = matcher.group(1)!!
                         var iStyle = imageStyle
                         var isSmallImage = true
@@ -319,9 +324,9 @@ class TextChapterLayout(
                         if (isSmallImage) {
                             sb.append(
                                 if (iStyle == "TEXT")
-                                    ChapterProvider.reviewChar
+                                    reviewChar
                                 else
-                                    ChapterProvider.srcReplaceChar
+                                    srcReplaceChar
                             )
                             srcList.add(imgSrc)
                         } else {
@@ -361,12 +366,12 @@ class TextChapterLayout(
                     val textAfter = content.substring(start, content.length)
                     sb.append(textAfter)
                 }
-                val text = sb.toString()
+                text = sb.toString()
                 if (text.isNotBlank()) {
                     wordCount += text.replace(noWordCountRegex,"").length
                     setTypeText(
                         book,
-                        if (AppConfig.enableReview) text + ChapterProvider.reviewChar else text,
+                        if (AppConfig.enableReview) text + reviewChar else text,
                         contentPaint,
                         contentPaintTextHeight,
                         contentPaintFontMetrics,
@@ -391,7 +396,7 @@ class TextChapterLayout(
             textPage.height += endPadding
         }
         textPage.text = stringBuilder.toString()
-        coroutineContext.ensureActive()
+        currentCoroutineContext().ensureActive()
         onPageCompleted()
         onCompleted()
     }
@@ -780,7 +785,7 @@ class TextChapterLayout(
         srcList: LinkedList<String>?
     ) {
         val column = when {
-            !srcList.isNullOrEmpty() && (char == ChapterProvider.srcReplaceChar || char == ChapterProvider.reviewChar && isLineEnd) -> {
+            !srcList.isNullOrEmpty() && (char == srcReplaceChar || char == reviewChar && isLineEnd) -> {
                 val src = srcList.removeFirst()
                 ImageProvider.cacheImage(book, src, ReadBook.bookSource)
                 ImageColumn(
@@ -855,7 +860,7 @@ class TextChapterLayout(
                     textPage.leftLineSize = textPage.lineSize
                 }
                 textPage.text = stringBuilder.toString()
-                coroutineContext.ensureActive()
+                currentCoroutineContext().ensureActive()
                 onPageCompleted()
                 //新建页面
                 pendingTextPage = TextPage()

@@ -24,7 +24,7 @@
 
 > `1000` 访问间隔1s  
 > `20/60000` 60s内访问次数20  
-> `java.setConcurrent(str: String)` 更改并发率(书源的并发率规则不为空时才生效)
+> `source.putConcurrent(str: String)` 更改并发率(书源的并发率规则不为空时才生效)
 
 * 书源类型: 文件
 > 对于类似知轩藏书提供文件整合下载的网站，可以在书源详情的下载URL规则获取文件链接
@@ -82,7 +82,8 @@
 ]
 ```
 * 登录URL
-> 可填写登录链接或者实现登录UI的登录逻辑的JavaScript
+> 可填写登录链接或者实现登录UI的登录逻辑的JavaScript  
+变量`isLongClick`为true时表示为按钮长按点击
 ```
 示范填写
 function login() {
@@ -213,6 +214,24 @@ let options = {
 
 * 购买操作
 > 可直接填写链接或者JavaScript，如果执行结果是网络链接将会自动打开浏览器,js返回true自动刷新目录和当前章节
+
+* 回调操作
+> 先启用事件监听按钮，然后软件触发事件时会执行回调规则的js代码。如果js返回true会消费事件，之后软件部分原本操作不会再执行。  
+`event`变量值对应的事件名称，目前的事件有
+```js
+"shareBook" //详情页分享按钮
+"clickBookName" //详情页点击书名
+"clickAuthor" //详情页点击作者
+"clickCustomButton" //书源自定义按钮
+"clearCache" //详情页清理缓存
+"addBookShelf" //添加到书架
+"delBookShelf" //移除书架
+"saveRead" //保存阅读进度
+"startRead" //开始阅读
+"endRead" //结束阅读
+"startShelfRefresh" //开始书架刷新
+"endShelfRefresh" //结束书架刷新
+```
 
 * 图片解密
 > 适用于图片需要二次解密的情况，直接填写JavaScript，返回解密后的`ByteArray`  

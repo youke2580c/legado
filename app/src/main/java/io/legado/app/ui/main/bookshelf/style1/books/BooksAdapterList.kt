@@ -32,13 +32,11 @@ class BooksAdapterList(
         payloads: MutableList<Any>
     ) = binding.run {
         if (payloads.isEmpty()) {
-            if (AppConfig.showBookname) {
-                tvName.text = item.name
-            }
+            tvName.text = item.name
             tvAuthor.text = item.author
             tvRead.text = item.durChapterTitle
             tvLast.text = item.latestChapterTitle
-            ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin)
+            ivCover.load(item.getDisplayCover(), item, false, item.origin)
             upRefresh(binding, item)
             upLastUpdateTime(binding, item)
         } else {
@@ -52,8 +50,7 @@ class BooksAdapterList(
                         "last" -> tvLast.text = item.latestChapterTitle
                         "cover" -> ivCover.load(
                             item.getDisplayCover(),
-                            item.name,
-                            item.author,
+                            item,
                             false,
                             item.origin,
                             fragment,

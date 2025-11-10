@@ -1272,4 +1272,20 @@
     <string name="video">视频</string>
     <string name="float_window">悬浮窗</string>
     <string name="video_play">视频播放</string>
+    <string name="no_more_chapter">没有更多章节</string>
+    <string name="overlay">叠加</string>
+    <string name="margin">间距</string>
+    <string name="replace_to_js">js处理</string>
+    <string name="layout_type">样式：</string>
+    <string name="layout_list_compact">紧凑列表</string>
+    <string name="clear_bitmap_covers">清除绘制封面的缓存</string>
+    <string name="enable_preload">预加载</string>
+    <string name="is_event_listener">事件监听</string>
+    <string name="rule_call_back">回调操作（callBackJs）</string>
+    <string name="time_hour">小时</string>
+    <string name="custom_button">定制按钮</string>
+    <string name="close_welcome">关闭欢迎页</string>
+    <string name="close_welcome_summary">启用后进入app不再展示欢迎页</string>
+    <string name="domain">域名</string>
+    <string name="write_source_comment">写入源注释</string>
 </resources>

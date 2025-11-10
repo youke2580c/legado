@@ -14,6 +14,7 @@ import com.google.android.material.tabs.TabLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
+import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.RssSource
 import io.legado.app.databinding.ActivityRssSourceEditBinding
 import io.legado.app.help.config.LocalConfig
@@ -31,6 +32,7 @@ import io.legado.app.ui.rss.source.debug.RssSourceDebugActivity
 import io.legado.app.ui.widget.dialog.UrlOptionDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
+import io.legado.app.ui.widget.recycler.NoChildScrollLinearLayoutManager
 import io.legado.app.ui.widget.text.EditEntity
 import io.legado.app.utils.GSON
 import io.legado.app.utils.imeHeight
@@ -216,6 +218,9 @@ class RssSourceEditActivity :
             text = "WEB_VIEW"
         })
         binding.recyclerView.setEdgeEffectColor(primaryColor)
+        if (adapter.editEntityMaxLine < 999) {
+            binding.recyclerView.layoutManager = NoChildScrollLinearLayoutManager(this) //启用后会阻止RecyclerView跟随光标滚动,避免文本框乱跳动
+        }
         binding.recyclerView.adapter = adapter
         binding.recyclerView.viewTreeObserver.addOnGlobalFocusChangeListener { oldFocus, newFocus ->
             if (newFocus is EditText) {
@@ -263,6 +268,9 @@ class RssSourceEditActivity :
             binding.cbIsEnable.isChecked = rs.enabled
             binding.cbSingleUrl.isChecked = rs.singleUrl
             binding.cbIsEnableCookie.isChecked = rs.enabledCookieJar == true
+            binding.cbIsEnablePreload.isChecked = rs.preload
+            binding.spType.setSelection(rs.type)
+            binding.lyType.setSelection(rs.articleStyle)
         }
         sourceEntities.clear()
         sourceEntities.apply {
@@ -271,6 +279,7 @@ class RssSourceEditActivity :
             add(EditEntity("sourceIcon", rs.sourceIcon, R.string.source_icon))
             add(EditEntity("sourceGroup", rs.sourceGroup, R.string.source_group))
             add(EditEntity("sourceComment", rs.sourceComment, R.string.comment))
+            add(EditEntity("searchUrl", rs.searchUrl, R.string.r_search_url))
             add(EditEntity("sortUrl", rs.sortUrl, R.string.sort_url))
             add(EditEntity("loginUrl", rs.loginUrl, R.string.login_url))
             add(EditEntity("loginUi", rs.loginUi, R.string.login_ui))
@@ -345,6 +354,9 @@ class RssSourceEditActivity :
         source.enabled = binding.cbIsEnable.isChecked
         source.singleUrl = binding.cbSingleUrl.isChecked
         source.enabledCookieJar = binding.cbIsEnableCookie.isChecked
+        source.preload = binding.cbIsEnablePreload.isChecked
+        source.type = binding.spType.selectedItemPosition
+        source.articleStyle = binding.lyType.selectedItemPosition
         sourceEntities.forEach {
             it.value = it.value?.takeIf { s -> s.isNotBlank() }
             when (it.key) {
@@ -360,6 +372,7 @@ class RssSourceEditActivity :
                 "header" -> source.header = it.value
                 "variableComment" -> source.variableComment = it.value
                 "concurrentRate" -> source.concurrentRate = it.value
+                "searchUrl" -> source.searchUrl = it.value
                 "sortUrl" -> source.sortUrl = it.value
                 "jsLib" -> source.jsLib = it.value
             }

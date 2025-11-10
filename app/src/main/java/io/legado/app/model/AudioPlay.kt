@@ -163,7 +163,7 @@ object AudioPlay : CoroutineScope by MainScope() {
                     }.onCancel {
                         removeLoading(index)
                     }.onFinally {
-                        callback?.upLyric(book.bookUrl, durLyric)
+                        callback?.upLyric(durLyric)
                         removeLoading(index)
                     }
             } else {
@@ -179,7 +179,7 @@ object AudioPlay : CoroutineScope by MainScope() {
     private fun contentLoadFinish(chapter: BookChapter, content: String) {
         if (chapter.index == book?.durChapterIndex) {
             durPlayUrl = content
-            durLyric = chapter.lyric
+            durLyric = chapter.getVariable("lyric")
             upPlayUrl()
         }
     }
@@ -363,7 +363,7 @@ object AudioPlay : CoroutineScope by MainScope() {
         }
     }
 
-    fun saveRead() {
+    fun saveRead(first: Boolean = false) {
         val book = book ?: return
         Coroutine.async {
             book.lastCheckCount = 0
@@ -371,7 +371,7 @@ object AudioPlay : CoroutineScope by MainScope() {
             val chapterChanged = book.durChapterIndex != durChapterIndex
             book.durChapterIndex = durChapterIndex
             book.durChapterPos = durChapterPos
-            if (chapterChanged) {
+            if (first || chapterChanged) {
                 appDb.bookChapterDao.getChapter(book.bookUrl, book.durChapterIndex)?.let {
                     book.durChapterTitle = it.getDisplayTitle(
                         ContentProcessor.get(book.name, book.origin).getTitleReplaceRules(),
@@ -433,7 +433,7 @@ object AudioPlay : CoroutineScope by MainScope() {
     interface CallBack {
 
         fun upLoading(loading: Boolean)
-        fun upLyric(bookUrl: String,lyric: String?)
+        fun upLyric(lyric: String?)
         fun upLyricP(position: Int)
     }
 
