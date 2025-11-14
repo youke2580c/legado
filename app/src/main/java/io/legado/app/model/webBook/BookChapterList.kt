@@ -239,7 +239,7 @@ object BookChapterList {
                         AppPattern.wordCountRegex.find(info)?.let { match ->
                             bookChapter.apply {
                                 wordCount = match.groupValues[1].trim()
-                                bookChapter.tag = info.replaceFirst(match.value, "")
+                                tag = info.replaceFirst(match.value, wordCount)
                             }
                         } ?: run { bookChapter.tag = info }
                     } else {
