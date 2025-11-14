@@ -7,7 +7,6 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.widget.EditText
 import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
 import androidx.core.view.isGone
@@ -16,6 +15,7 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.textfield.TextInputEditText
 import io.github.rosemoe.sora.event.PublishSearchResultEvent
 import io.github.rosemoe.sora.event.SelectionChangeEvent
+import io.github.rosemoe.sora.langs.textmate.TextMateColorScheme
 import io.github.rosemoe.sora.langs.textmate.registry.ThemeRegistry
 import io.github.rosemoe.sora.widget.CodeEditor
 import io.github.rosemoe.sora.widget.EditorSearcher
@@ -40,13 +40,14 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 class CodeEditActivity :
     VMBaseActivity<ActivityCodeEditBinding, CodeEditViewModel>(),
     KeyboardToolPop.CallBack, ChangeThemeDialog.CallBack, SettingsDialog.CallBack {
+    companion object {
+        private var isInitialized = false
+    }
     override val binding by viewBinding(ActivityCodeEditBinding::inflate)
     override val viewModel by viewModels<CodeEditViewModel>()
     private val softKeyboardTool by lazy {
         KeyboardToolPop(this, lifecycleScope, binding.root, this)
     }
-
-
     private val editor: CodeEditor by lazy { binding.editText }
     private val editorSearcher: EditorSearcher by lazy { editor.searcher }
     private var options = EditorSearcher.SearchOptions(false, true)
@@ -57,21 +58,22 @@ class CodeEditActivity :
             softKeyboardTool.initialPadding = windowInsets.imeHeight
             windowInsets
         }
-        editor.colorScheme = TextMateColorScheme2(
-            ThemeRegistry.getInstance(),
-            ThemeRegistry.getInstance().currentThemeModel
-        )
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        if (!isInitialized) {
+            viewModel.initSora()
+            isInitialized = true
+        }
         softKeyboardTool.attachToWindow(window)
+        editor.colorScheme = TextMateColorScheme2.create(ThemeRegistry.getInstance()) //先设置颜色,避免一开始的白屏
         viewModel.initData(intent) {
             editor.apply {
                 setEditorLanguage(viewModel.language)
                 upEdit(AppConfig.editFontScale, null, AppConfig.editAutoWrap)
                 setText(viewModel.initialText)
                 if (!viewModel.writable) {
-                    editor.editable = false
+                    editable = false
                     binding.titleBar.title = getString(R.string.view_code)
                 }
                 requestFocus()
