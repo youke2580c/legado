@@ -3,7 +3,7 @@ name: Test Build
 on:
   push:
     branches:
-      - master
+      - main
     paths:
       - '**'
       # - '!**/assets/**'
@@ -15,7 +15,7 @@ on:
       - '**/modules/web/**'
   workflow_run:
     workflows: [Build Web]
-    branches: [master]
+    branches: [main]
     types:
       - completed
   workflow_dispatch:
@@ -28,32 +28,101 @@ jobs:
 
   prepare:
     runs-on: ubuntu-latest
-    if: ${{ !startsWith(github.event.head_commit.message, 'Merge pull request') }}
+    if: ${{ !startsWith(github.event.head_commit.message, 'Merge pull request') }} && !(github.event_name == 'pull_request' && github.event.pull_request.user.login == 'Luoyacheng')
     outputs:
       version: ${{ steps.set-ver.outputs.version }}
       versionL: ${{ steps.set-ver.outputs.versionL }}
       lanzou: ${{ steps.check.outputs.lanzou }}
       telegram: ${{ steps.check.outputs.telegram }}
+      gitee: ${{ steps.check.outputs.gitee }}
+      sgithub: ${{ steps.check.outputs.sgithub }}
+      updateLog_updated: ${{ steps.updateLog.outputs.updated }}
+      updateLog_content: ${{ steps.updateLog.outputs.body }}
+      build_matrix: ${{ steps.set-matrix.outputs.build_matrix }}
     steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 20
       - id: set-ver
         run: |
           echo "version=$(date -d "8 hour" -u +3.%y.%m%d%H)" >> $GITHUB_OUTPUT
           echo "versionL=$(date -d "8 hour" -u +3.%y.%m%d%H%M)" >> $GITHUB_OUTPUT
       - id: check
         run: |
-          if [ ${{ secrets.LANZOU_ID }} ]; then
+          if [ -n "${{ secrets.LANZOU_ID }}" ]; then
             echo "lanzou=yes" >> $GITHUB_OUTPUT
           fi
-          if [ ${{ secrets.BOT_TOKEN }} ]; then
+          if [ -n "${{ secrets.BOT_TOKEN }}" ]; then
             echo "telegram=yes" >> $GITHUB_OUTPUT
+          fi
+          if [ -n "${{ secrets.GITEE_TOKEN }}" ]; then
+            echo "gitee=yes" >> $GITHUB_OUTPUT
+          fi
+          if [ -n "${{ secrets.S_GITHUB_TOKEN }}" ]; then
+            echo "sgithub=yes" >> $GITHUB_OUTPUT
+          fi
+      - id: updateLog
+        run: |
+          if ! git fetch origin main 2>/dev/null; then
+            echo "Warning: git fetch failed, continuing with local data"
+          fi
+          UPDATED_CONTENT=""
+          IS_MERGE_PR=false
+          COMMIT_MSG="${GITHUB_EVENT_HEAD_COMMIT_MESSAGE:-}"
+          if [[ -n "$COMMIT_MSG" ]]; then
+            if [[ "$COMMIT_MSG" =~ ^"Merge pull request" ]] || 
+              [[ "$COMMIT_MSG" =~ ^"Merge branch" ]] || 
+              [[ "$COMMIT_MSG" =~ ^"Sync upstream" ]]; then
+              IS_MERGE_PR=true
+            fi
+          fi
+          if git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -q "app/src/main/assets/updateLog.md"; then
+            echo "updated=yes" >> $GITHUB_OUTPUT
+            if [ -f "app/src/main/assets/updateLog.md" ]; then
+              UPDATED_CONTENT=$(awk '
+              /^\*\*20/ && !found {
+                found=1
+                print
+                next
+              }
+              found && NF == 0 { exit }
+              found { print }
+              END {
+                if (!found) {
+                  system("head -n 10 app/src/main/assets/updateLog.md")
+                }
+              }
+              ' app/src/main/assets/updateLog.md)
+            fi
+          elif [ "$IS_MERGE_PR" = true ]; then
+              UPDATED_CONTENT="$COMMIT_MSG"
+          else
+            if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+              COMMIT_RANGE="${{ github.event.before }}..${{ github.event.after }}"
+              if git rev-parse "$COMMIT_RANGE" >/dev/null 2>&1; then
+                UPDATED_CONTENT=$(git log $COMMIT_RANGE --pretty=format:"• %s" --reverse 2>/dev/null | grep -v "^• Merge" || echo "• $COMMIT_MSG")
+              else
+                UPDATED_CONTENT=$(git log -10 --pretty=format:"• %s (%h)" --reverse 2>/dev/null | grep -v "^• Merge" || echo "• $COMMIT_MSG")
+              fi
+            fi
+          fi
+          if [ -z "$UPDATED_CONTENT" ]; then
+            UPDATED_CONTENT=$(git log -1 --pretty=%B)
+          fi
+          CONTENT_JSON=$(echo "$UPDATED_CONTENT" | jq -Rs . 2>/dev/null || echo "\"Error generating update content\"")
+          echo "body=$CONTENT_JSON" >> $GITHUB_OUTPUT
+      - id: set-matrix
+        run: |
+          if [ "${{ steps.updateLog.outputs.updated }}" == "yes" ]; then
+            echo 'build_matrix={"product":["app"],"type":["release","releaseS"]}' >> $GITHUB_OUTPUT
+          else
+            echo 'build_matrix={"product":["app"],"type":["release"]}' >> $GITHUB_OUTPUT
           fi
 
   build:
     needs: prepare
     strategy:
-      matrix:
-        product: [ app ]
-        type: [ release, releaseA ]
+      matrix: ${{ fromJson(needs.prepare.outputs.build_matrix) }}
       fail-fast: false
     runs-on: ubuntu-latest
     env:
@@ -62,11 +131,11 @@ jobs:
       VERSION: ${{ needs.prepare.outputs.version }}
       VERSIONL: ${{ needs.prepare.outputs.versionL }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 17
@@ -78,23 +147,25 @@ jobs:
         run: |
           echo "给apk增加签名"
           cp $GITHUB_WORKSPACE/.github/workflows/legado.jks $GITHUB_WORKSPACE/app/legado.jks
-          sed '$a\RELEASE_STORE_FILE=./legado.jks'          $GITHUB_WORKSPACE/gradle.properties -i
-          sed '$a\RELEASE_KEY_ALIAS=legado'                 $GITHUB_WORKSPACE/gradle.properties -i
-          sed '$a\RELEASE_STORE_PASSWORD=gedoor_legado'     $GITHUB_WORKSPACE/gradle.properties -i
-          sed '$a\RELEASE_KEY_PASSWORD=gedoor_legado'       $GITHUB_WORKSPACE/gradle.properties -i
+          cat >> $GITHUB_WORKSPACE/gradle.properties << EOF
+          RELEASE_STORE_FILE=./legado.jks
+          RELEASE_KEY_ALIAS=legado
+          RELEASE_STORE_PASSWORD=gedoor_legado
+          RELEASE_KEY_PASSWORD=gedoor_legado
+          EOF
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Build With Gradle
         continue-on-error: true
         run: |
-          if [ ${{ env.type }} == 'release' ]; then
+          if [ "${{ env.type }}" == 'release' ]; then
             typeName="原包名"
           else
             typeName="共存"
-            sed "s/'.release'/'.releaseA'/" $GITHUB_WORKSPACE/app/build.gradle  -i
-            sed 's/.release/.releaseA/'     $GITHUB_WORKSPACE/app/google-services.json -i
+            sed "s/'.release'/'.releaseS'/" $GITHUB_WORKSPACE/app/build.gradle  -i
+            # sed 's/.release/.releaseS/'     $GITHUB_WORKSPACE/app/google-services.json -i
           fi
           echo "统一版本号"
           sed "/def version/c def version = \"${{ env.VERSION }}\"" $GITHUB_WORKSPACE/app/build.gradle  -i
@@ -104,7 +175,11 @@ jobs:
           echo "修改APK文件名"
           mkdir -p ${{ github.workspace }}/apk/
           for file in `ls ${{ github.workspace }}/app/build/outputs/apk/*/*/*.apk`; do
-            mv "$file" ${{ github.workspace }}/apk/legado_${{ env.product }}_${{ env.VERSIONL }}_$typeName.apk
+            if [ "${{ env.type }}" == 'release' ]; then
+              mv "$file" ${{ github.workspace }}/apk/legado_测试版_${{ env.VERSIONL }}_$typeName.apk
+            else
+              mv "$file" ${{ github.workspace }}/apk/legado_正式版_${{ env.VERSIONL }}_$typeName.apk
+            fi
           done
           echo "移动mapping文件"
           mkdir -p ${{ github.workspace }}/mapping/
@@ -121,7 +196,7 @@ jobs:
           done
 
       - name: Upload Missing Rules File To Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: legado.${{ env.product }}.${{ env.type }}.mapping.missing_rules
           if-no-files-found: ignore
@@ -140,14 +215,14 @@ jobs:
           fi
 
       - name: Upload App To Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: legado.${{ env.product }}.${{ env.type }}
           if-no-files-found: ignore
           path: ${{ github.workspace }}/apk/*.apk
 
       - name: Upload Mapping File To Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: legado.${{ env.product }}.${{ env.type }}.mapping
           if-no-files-found: ignore
@@ -155,13 +230,15 @@ jobs:
 
   prerelease:
     needs: [ prepare, build ]
-    if: github.event_name != 'pull_request' && github.repository == 'gedoor/legado'
+    if: github.event_name != 'pull_request' && github.repository == 'Luoyacheng/legado'
     runs-on: ubuntu-latest
-    env: 
+    env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+      - uses: actions/download-artifact@v5
         with:
           path: apk/
 
@@ -172,21 +249,36 @@ jobs:
 
           for file in `ls *.apk`; do
             if [[ "$file" == *原包名* ]]; then
-              mv "$file" $(echo $file | sed s/原包名/release/)
+              mv "$file" $(echo $file | sed -e s/原包名/release/ -e s/测试版/beta/)
             else
-              mv "$file" $(echo $file | sed s/共存/releaseA/)
+              mv "$file" $(echo $file | sed -e s/共存/releaseS/ -e s/正式版/plus/)
             fi
           done
 
+      - name: Publish Official Release
+        if: needs.prepare.outputs.updateLog_updated == 'yes'
+        uses: softprops/action-gh-release@v1
+        with:
+          name: legado_app_${{ env.VERSION }}
+          tag_name: ${{ env.VERSION }}
+          body: |
+            ### 更新内容
+            ${{ fromJSON(needs.prepare.outputs.updateLog_content) }}
+          prerelease: false
+          files: ${{ github.workspace }}/apk/*.apk
+          fail_on_unmatched_files: true
+
       - name: Delete Pre-Release
+        if: needs.prepare.outputs.updateLog_updated != 'yes'
         run: |
           if gh release view beta &>/dev/null; then
             gh release delete beta -y
           fi
         env:
           GH_TOKEN: ${{ github.token }}
-      
+
       - name: Create or update beta tag
+        if: needs.prepare.outputs.updateLog_updated != 'yes'
         uses: richardsimko/update-tag@v1
         with:
           tag_name: beta
@@ -194,13 +286,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish Pre-Release
-        uses: ncipollo/release-action@v1
+        if: needs.prepare.outputs.updateLog_updated != 'yes'
+        uses: softprops/action-gh-release@v1
         with:
           name: legado_app_${{ env.VERSION }}
-          tag: "beta"
-          body: "此版本为测试版，签名与正式版不同，可能存在不稳定情况，升级前请务必备份好数据。"
+          tag_name: beta
+          body: |
+            ### 更新内容
+            ${{ fromJSON(needs.prepare.outputs.updateLog_content) }}
           prerelease: true
-          artifacts: ${{ github.workspace }}/apk/*.apk
+          files: ${{ github.workspace }}/apk/*.apk
+          fail_on_unmatched_files: true
 
   lanzou:
     needs: [ prepare, build ]
@@ -215,8 +311,8 @@ jobs:
       #蓝奏云分享链接
       LANZOU_URL: ${{ secrets.LANZOU_URL }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
         with:
           path: apk/
       - working-directory: apk/
@@ -228,49 +324,177 @@ jobs:
           python3 $GITHUB_WORKSPACE/.github/scripts/lzy_web.py "$path" "$LANZOU_FOLDER_ID"
           echo "[$(date -u -d '+8 hour' '+%Y.%m.%d %H:%M:%S')] 分享链接: $LANZOU_URL"
 
-  test_Branch:
-    needs: [ prepare, build ]
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'pull_request' && github.actor == 'gedoor' }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: apk/
-      - working-directory: apk/
-        run: mv */*.apk . ;rm -rf */
-      - name: Push To "test" Branch
-        run: |
-          cd $GITHUB_WORKSPACE/apk/
-          git init
-          git checkout -b test
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote add origin "https://${{ github.actor }}:${{ secrets.ACTIONS_TOKEN }}@github.com/${{ github.actor }}/release"
-          git add *.apk
-          git commit -m "${{ needs.prepare.outputs.versionL }}"
-          git push -f -u origin test
-
   telegram:
-    needs: [ prepare, build ]
-    if: ${{ github.event_name != 'pull_request' && needs.prepare.outputs.telegram == 'yes' }}
+    needs: [prepare, build]
+    if: github.event_name != 'pull_request' && needs.prepare.outputs.telegram == 'yes'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: apk/
-      - working-directory: apk/
+      - id: set-tags
+        working-directory: apk/
         run: |
-          for file in `ls */*.apk`; do
-            mv "$file" "$(echo "$file"|sed -e 's#.*\/##g' -e "s/_/ /g" -e 's/legado/阅读/')"
-          done
+          mv */*.apk .
           rm -rf */
+          has_plus=false
+          for file in `ls *.apk`; do
+            if [[ "$file" == *原包名* ]]; then
+              mv "$file" $(echo $file | sed s/原包名/beta/)
+            else
+              mv "$file" $(echo $file | sed s/共存/plus/)
+              has_plus=true
+            fi
+          done
+          tags=""
+          if [ "$has_plus" = true ]; then
+            tags="#beta #plus"
+          else
+            tags="#beta"
+          fi
+          echo "TAGS=$tags" >> $GITHUB_OUTPUT
       - name: Post to channel
         uses: xireiki/channel-post@v1
         with:
           chat_id: ${{ secrets.CHANNEL_ID }}
           bot_token: ${{ secrets.BOT_TOKEN }}
-          context: "#阅读 #Legado #Beta ${{ needs.prepare.outputs.versionL }}"
+          context: |
+            版本号：${{ needs.prepare.outputs.versionL }}
+            更新内容：
+            ${{ fromJSON(needs.prepare.outputs.updateLog_content) }}
+            #阅读 #Legado #阅读Sigma ${{ steps.set-tags.outputs.TAGS }}
           path: apk/*
           method: sendFile
+
+  gitee:
+    needs: [prepare, build]
+    if: github.event_name != 'pull_request' && needs.prepare.outputs.gitee == 'yes'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: apk/
+      - working-directory: apk/
+        run: |
+          mv */*.apk .
+          rm -rf */
+
+          for file in `ls *.apk`; do
+            if [[ "$file" == *原包名* ]]; then
+              mv "$file" $(echo $file | sed s/原包名/release/)
+            else
+              mv "$file" $(echo $file | sed s/共存/releaseS/)
+            fi
+          done
+
+      - name: Upload to Gitee Release
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITEE_USER: "lyc486"
+          GITEE_REPO: "legado"
+          VERSION: ${{ needs.prepare.outputs.version }}
+          UPDATE_CONTENT: ${{ fromJSON(needs.prepare.outputs.updateLog_content) }}
+          UPDATE_UPDATED: ${{ needs.prepare.outputs.updateLog_updated }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq curl 
+          API_BASE="https://gitee.com/api/v5/repos/$GITEE_USER/$GITEE_REPO"
+          AUTH_HEADER="Authorization: token $GITEE_TOKEN"
+
+          # 根据条件设置标签和发布类型
+          if [ "$UPDATE_UPDATED" = "yes" ]; then
+            TAG_NAME="$VERSION"
+            PRERELEASE="false"
+            RELEASE_NAME="legado_app_$VERSION"
+            echo "🚀 发布正式版: $TAG_NAME"
+          else
+            TAG_NAME="beta"
+            PRERELEASE="true"
+            RELEASE_NAME="legado_app_$VERSION"
+            echo "🧪 发布预发布版: $TAG_NAME"
+          fi
+
+          # 删除旧Release
+          if [ "$TAG_NAME" = "beta" ]; then
+            if release_data=$(curl -sH "$AUTH_HEADER" "$API_BASE/releases/tags/beta"); then
+              release_id=$(echo "$release_data" | jq -r '.id // empty')
+              if [ -n "$release_id" ]; then
+                curl -sX DELETE -H "$AUTH_HEADER" "$API_BASE/releases/$release_id"
+                echo "✅ 已删除旧 beta release"
+              fi
+            fi
+          else
+            if release_data=$(curl -sH "$AUTH_HEADER" "$API_BASE/releases/tags/$TAG_NAME"); then
+              release_id=$(echo "$release_data" | jq -r '.id // empty')
+              if [ -n "$release_id" ]; then
+                curl -sX DELETE -H "$AUTH_HEADER" "$API_BASE/releases/$release_id"
+                echo "✅ 已删除旧 $TAG_NAME release"
+              fi
+            fi
+          fi
+
+          # 创建新Release
+          RELEASE_JSON=$(curl -sX POST \
+            -H "Content-Type: application/json" \
+            -H "$AUTH_HEADER" \
+            -d '{
+              "tag_name": "'"$TAG_NAME"'",
+              "name": "'"$RELEASE_NAME"'",
+              "body": "'"$UPDATE_CONTENT"'",
+              "target_commitish": "main",
+              "prerelease": '"$PRERELEASE"'
+            }' \
+            "$API_BASE/releases")
+
+          if ! RELEASE_ID=$(echo "$RELEASE_JSON" | jq -r '.id // empty'); then
+            echo "❌ Release创建失败"
+            echo "$RELEASE_JSON"
+            exit 1
+          fi
+
+          # 上传所有APK文件
+          for APK_FILE in apk/*.apk; do
+            curl -sX POST \
+              -H "$AUTH_HEADER" \
+              -F "file=@$APK_FILE" \
+              "$API_BASE/releases/$RELEASE_ID/attach_files"
+            echo "✅ 已上传 $APK_FILE"
+          done
+
+  update-storage:
+    needs: [prepare, build]
+    if: github.event_name != 'pull_request'&& needs.prepare.outputs.sgithub == 'yes' && needs.prepare.outputs.updateLog_updated == 'yes'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: legado.app.releaseS
+          path: ./apk-releaseS
+
+      - name: Check releaseS APK exists
+        id: check-apk
+        run: |
+          if ls ./apk-releaseS/*.apk 1> /dev/null 2>&1; then
+            echo "releaseS APK found"
+            echo "apk_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "releaseS APK not found"
+            echo "apk_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload to yuedu repository
+        if: steps.check-apk.outputs.apk_exists == 'true'
+        run: |
+          # 设置Git配置
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          # 克隆目标仓库
+          git clone https://${{ secrets.S_GITHUB_TOKEN }}@github.com/Luoyacheng/yuedu.git yuedu-repo
+          # 创建目录（如果不存在）
+          mkdir -p yuedu-repo/sigma
+          # 复制releaseS APK文件并重命名
+          cp ./apk-releaseS/*.apk yuedu-repo/sigma/leagado_Sigma_正式版.apk
+          # 提交更改
+          cd yuedu-repo
+          git add sigma/leagado_Sigma_正式版.apk
+          git commit -m "Update sigma.apk to version ${{ needs.prepare.outputs.versionL }}"
+          git push
