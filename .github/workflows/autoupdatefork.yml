@@ -1,26 +1,85 @@
-#更新fork
+# 更新 fork：尝试合并上游并在发生无共同历史时允许合并（并处理冲突）
 name: update fork
 
-on: 
+on:
   schedule:
-    - cron: '0 16 * * *' #0点定时任务
+    - cron: '0 16 * * *' # UTC 16:00
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  UPSTREAM_REPO: https://github.com/gedoor/legado.git
+  TARGET_BRANCH: ${{ github.event.repository.default_branch }}
 
 jobs:
-  build:
+  update:
     runs-on: ubuntu-latest
-    if: ${{ github.event.repository.owner.id == github.event.sender.id && github.actor != 'gedoor' }}
+    if: ${{ github.repository_owner != 'gedoor' }} # 仅在 fork（不是上游仓库）运行
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-    - name: Set env
+      with:
+        fetch-depth: 0
+
+    - name: Configure git
       run: |
         git config --global user.email "github-actions@github.com"
         git config --global user.name "github-actions"
-    - name: Update fork
+
+    - name: Add upstream and fetch
       run: |
-        git remote add upstream https://github.com/gedoor/legado.git
-        git remote -v
+        git remote add upstream $UPSTREAM_REPO || true
         git fetch upstream
-        git checkout master
-        git merge upstream/master
-        git push origin master
+
+    - name: Merge upstream (allow unrelated histories) and handle conflicts
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        OWNER: ${{ github.repository_owner }}
+        REPO: ${{ github.event.repository.name }}
+        TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
+      run: |
+        set -euo pipefail
+        echo "Target branch: $TARGET_BRANCH"
+
+        # 确保本地在目标分支且与 origin 对齐
+        git checkout "$TARGET_BRANCH"
+        git reset --hard "origin/$TARGET_BRANCH" || true
+
+        # 尝试合并（不自动提交，这样我们可以检测冲突）
+        if git merge "upstream/$TARGET_BRANCH" --no-commit --allow-unrelated-histories -m "Merge upstream/$TARGET_BRANCH into $TARGET_BRANCH"; then
+          echo "Merge succeeded without conflicts. Committing and pushing..."
+          # 如果 merge 成功，commit 可能已经存在，但确保有 commit
+          git commit -m "Merge upstream/$TARGET_BRANCH into $TARGET_BRANCH" || true
+          git push origin "$TARGET_BRANCH"
+          echo "Update complete."
+        else
+          echo "Merge produced conflicts. Creating conflict branch for manual resolution..."
+          BRANCH="upstream-merge-conflicts-$(date -u +%Y%m%d-%H%M%S)"
+          git checkout -b "$BRANCH"
+
+          # 把带冲突标记的当前工作树提交为 WIP，方便人工查看和解决
+          git add -A || true
+          git commit -m "WIP: merge upstream/$TARGET_BRANCH into $TARGET_BRANCH - conflicts require manual resolution" || true
+
+          # 推送冲突分支
+          git push origin "$BRANCH"
+
+          # 创建 PR 以便在 GitHub UI 中解决冲突
+          PR_TITLE="WIP: Merge upstream/$TARGET_BRANCH into $TARGET_BRANCH (conflicts need resolution)"
+          PR_BODY="This PR contains the merge result of upstream/$TARGET_BRANCH into $TARGET_BRANCH. Conflicts were detected and are marked in the files. Please resolve the conflicts in this branch and merge to $TARGET_BRANCH. Upstream: $UPSTREAM_REPO"
+
+          API_URL="https://api.github.com/repos/$OWNER/$REPO/pulls"
+          DATA=$(printf '{"title":"%s","body":"%s","head":"%s","base":"%s"}' "$PR_TITLE" "$PR_BODY" "$BRANCH" "$TARGET_BRANCH")
+          echo "Creating PR via GitHub API..."
+          curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "$API_URL" -d "$DATA" || true
+
+          # 清理本地合并状态并重置回 origin
+          git merge --abort || true
+          git checkout "$TARGET_BRANCH"
+          git reset --hard "origin/$TARGET_BRANCH" || true
+
+          echo "Conflict branch created: $BRANCH and PR opened for manual resolution. Exiting with failure to signal manual action is needed."
+          exit 1
+        fi
