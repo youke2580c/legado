@@ -94,7 +94,6 @@ class VideoPlayer: StandardGSYVideoPlayer {
     }
 
     private fun initView() {
-        isNeedLockFull = true //使用锁定按钮
         playbackSpeed = findViewById(R.id.playback_speed)
         playbackSpeed?.setOnClickListener {
             if (mHadPlay && !isChanging) {
@@ -193,12 +192,6 @@ class VideoPlayer: StandardGSYVideoPlayer {
         }
     }
 
-    override fun onError(what: Int, extra: Int) {
-        super.onError(what, extra)
-        VideoPlay.durChapterPos = VideoPlay.videoManager.getCurrentPosition().toInt()
-        VideoPlay.saveRead()
-        mSeekOnStart = VideoPlay.durChapterPos.toLong()
-    }
 
     /**********以下重载GSYVideoPlayer的GSYVideoViewBridge相关实现***********/
     override fun getGSYVideoManager(): ExoVideoManager {

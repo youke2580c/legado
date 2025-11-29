@@ -52,7 +52,7 @@ class FloatingPlayer : StandardGSYVideoPlayer {
         if (mTextureViewContainer.isNotEmpty()) {
             mTextureViewContainer.removeAllViews()
         }
-        if (!mIfCurrentIsFullscreen) gsyVideoManager.setLastListener(null)
+        if (!mIfCurrentIsFullscreen) getGSYVideoManager().setLastListener(null)
         releaseNetWorkState()
         if (mVideoAllCallBack != null && isCurrentMediaListener) {
             mVideoAllCallBack.onAutoComplete(mOriginUrl, mTitle, this)
@@ -108,13 +108,6 @@ class FloatingPlayer : StandardGSYVideoPlayer {
 
     override fun getFullWindowPlayer(): GSYVideoPlayer? = null
     override fun getSmallWindowPlayer(): GSYVideoPlayer? = null
-
-    override fun onError(what: Int, extra: Int) {
-        super.onError(what, extra)
-        VideoPlay.durChapterPos = VideoPlay.videoManager.getCurrentPosition().toInt()
-        VideoPlay.saveRead()
-        mSeekOnStart = VideoPlay.durChapterPos.toLong()
-    }
 
     /**********以下重载GSYVideoPlayer的GSYVideoViewBridge相关实现***********/
     override fun getGSYVideoManager(): ExoVideoManager {

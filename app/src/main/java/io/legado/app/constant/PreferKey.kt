@@ -196,5 +196,4 @@ object PreferKey {
     const val editNonPrintable = "editNonPrintable"
     const val editAutoWrap = "editAutoWrap"
     const val editAutoComplete = "editAutoComplete"
-    const val showBoardLine = "showBoardLine"
 }

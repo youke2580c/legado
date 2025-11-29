@@ -15,13 +15,11 @@ import android.os.PowerManager
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
-import androidx.annotation.OptIn
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media.AudioFocusRequestCompat
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import io.legado.app.R
 import io.legado.app.base.BaseService
@@ -217,7 +215,6 @@ class AudioPlayService : BaseService(),
     /**
      * 播放音频
      */
-    @OptIn(UnstableApi::class)
     @SuppressLint("WakelockTimeout")
     private fun play() {
         if (useWakeLock) {

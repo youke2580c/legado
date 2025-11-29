@@ -1,7 +1,6 @@
 package io.legado.app.ui.code.config
 
 import android.annotation.SuppressLint
-import android.content.Context
 import android.content.DialogInterface
 import android.os.Bundle
 import android.view.View
@@ -20,9 +19,13 @@ import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import splitties.init.appCtx
 
-class SettingsDialog(private val context: Context, private val callBack: CallBack) :
+class SettingsDialog(private val callBack: CallBack) :
     BaseDialogFragment(R.layout.dialog_edit_settings) {
+    companion object {
+        private val fontSizeStr by lazy { appCtx.getString(R.string.font_size) + " " }
+    }
     private val binding by viewBinding(DialogEditSettingsBinding::bind)
     private val editNonPrintable = AppConfig.editNonPrintable
 
@@ -35,7 +38,7 @@ class SettingsDialog(private val context: Context, private val callBack: CallBac
     @SuppressLint("SetTextI18n")
     private fun initData() {
         binding.run {
-            tvFontSize.text = AppConfig.editFontScale.toFontSizeStr()
+            tvFontSize.text = fontSizeStr + AppConfig.editFontScale
             cbAutoComplete.isChecked = AppConfig.editAutoComplete
             FLAGDRAWWHITESPACELEADING.isChecked = editNonPrintable and FLAG_DRAW_WHITESPACE_LEADING != 0
             FLAGDRAWWHITESPACEINNER.isChecked = editNonPrintable and FLAG_DRAW_WHITESPACE_INNER != 0
@@ -58,12 +61,12 @@ class SettingsDialog(private val context: Context, private val callBack: CallBac
                     .setCustomButton((R.string.btn_default_s)) {
                         putPrefInt(PreferKey.editFontScale, 16)
                         callBack.upEdit(fontSize = 16)
-                        tvFontSize.text = 16.toFontSizeStr()
+                        tvFontSize.text = fontSizeStr + "16"
                     }
                     .show {
                         putPrefInt(PreferKey.editFontScale, it)
                         callBack.upEdit(fontSize = it)
-                        tvFontSize.text = it.toFontSizeStr()
+                        tvFontSize.text = fontSizeStr + it
                     }
             }
             cbAutoComplete.setOnCheckedChangeListener { _, isChecked ->
@@ -102,9 +105,6 @@ class SettingsDialog(private val context: Context, private val callBack: CallBac
         }
     }
 
-    private fun Int.toFontSizeStr(): String {
-        return context.getString(R.string.font_size, this)
-    }
     interface CallBack {
         fun upEdit(fontSize: Int? = null, autoComplete: Boolean? = null, autoWarp: Boolean? = null, editNonPrintable: Int? = null)
     }

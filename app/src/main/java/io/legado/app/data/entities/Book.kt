@@ -380,15 +380,13 @@ data class Book(
      * 迁移旧的书籍的一些信息到新的书籍中
      */
     fun migrateTo(newBook: Book, toc: List<BookChapter>): Book {
-        if (toc.isNotEmpty()) {
-            newBook.durChapterIndex = BookHelp
-                .getDurChapter(durChapterIndex, durChapterTitle, toc, totalChapterNum)
-            newBook.durChapterTitle = toc[newBook.durChapterIndex].getDisplayTitle(
-                ContentProcessor.get(newBook.name, newBook.origin).getTitleReplaceRules(),
-                getUseReplaceRule()
-            )
-            newBook.durChapterPos = durChapterPos
-        }
+        newBook.durChapterIndex = BookHelp
+            .getDurChapter(durChapterIndex, durChapterTitle, toc, totalChapterNum)
+        newBook.durChapterTitle = toc[newBook.durChapterIndex].getDisplayTitle(
+            ContentProcessor.get(newBook.name, newBook.origin).getTitleReplaceRules(),
+            getUseReplaceRule()
+        )
+        newBook.durChapterPos = durChapterPos
         newBook.durChapterTime = durChapterTime
         newBook.group = group
         newBook.order = order

@@ -1,7 +1,6 @@
 package io.legado.app.ui.video.config
 
 import android.annotation.SuppressLint
-import android.content.Context
 import android.os.Bundle
 import android.view.View
 import io.legado.app.R
@@ -10,9 +9,13 @@ import io.legado.app.databinding.DialogVideoSettingsBinding
 import io.legado.app.model.VideoPlay
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import splitties.init.appCtx
 
-class SettingsDialog(private val context: Context, private val callBack: CallBack? = null) :
+class SettingsDialog(private val callBack: CallBack? = null) :
     BaseDialogFragment(R.layout.dialog_video_settings) {
+    companion object {
+        private val pressSpeedStr by lazy { appCtx.getString(R.string.press_speed) + " " }
+    }
     private val binding by viewBinding(DialogVideoSettingsBinding::bind)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
@@ -23,7 +26,7 @@ class SettingsDialog(private val context: Context, private val callBack: CallBac
     @SuppressLint("SetTextI18n")
     private fun initData() {
         binding.run {
-            tvPressSpeed.text = (VideoPlay.longPressSpeed / 10.0f).toPressSpeedStr()
+            tvPressSpeed.text = pressSpeedStr + VideoPlay.longPressSpeed / 10.0
             cbAutoPlay.isChecked = VideoPlay.autoPlay
             cbStartFull.isChecked = VideoPlay.startFull
             cbFullBottomProgress.isChecked = VideoPlay.fullBottomProgressBar
@@ -51,19 +54,16 @@ class SettingsDialog(private val context: Context, private val callBack: CallBac
                     .setValue(VideoPlay.longPressSpeed)
                     .setCustomButton((R.string.btn_default_s)) {
                         VideoPlay.longPressSpeed = 30
-                        tvPressSpeed.text = 3.0f.toPressSpeedStr()
+                        tvPressSpeed.text = pressSpeedStr + 3.0
                     }
                     .show {
                         VideoPlay.longPressSpeed = it
-                        tvPressSpeed.text = (it / 10.0f).toPressSpeedStr()
+                        tvPressSpeed.text = pressSpeedStr + it / 10.0
                     }
             }
         }
     }
 
-    private fun Float.toPressSpeedStr(): String {
-        return context.getString(R.string.press_speed, this)
-    }
     interface CallBack {
 //        fun upUi()
     }

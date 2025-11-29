@@ -8,7 +8,6 @@ import io.legado.app.data.entities.Bookmark
 import io.legado.app.databinding.ItemBookmarkBinding
 import io.legado.app.utils.gone
 import splitties.views.onClick
-import splitties.views.onLongClick
 
 class BookmarkAdapter(context: Context, val callback: Callback) :
     RecyclerAdapter<Bookmark, ItemBookmarkBinding>(context) {
@@ -36,11 +35,6 @@ class BookmarkAdapter(context: Context, val callback: Callback) :
                 callback.onItemClick(it, holder.layoutPosition)
             }
         }
-        binding.root.onLongClick {
-            getItemByLayoutPosition(holder.layoutPosition)?.let {
-                callback.onItemLongClick(it, holder.layoutPosition)
-            } ?: false
-        }
     }
 
     fun getHeaderText(position: Int): String {
@@ -60,7 +54,6 @@ class BookmarkAdapter(context: Context, val callback: Callback) :
     interface Callback {
 
         fun onItemClick(bookmark: Bookmark, position: Int)
-        fun onItemLongClick(bookmark: Bookmark, position: Int): Boolean
 
     }
 

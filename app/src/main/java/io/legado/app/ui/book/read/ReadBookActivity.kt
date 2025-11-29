@@ -1649,7 +1649,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun finish() {
         val book = ReadBook.book ?: return super.finish()
-        SourceCallBack.callBackBook(SourceCallBack.END_READ, ReadBook.bookSource, ReadBook.book, ReadBook.curTextChapter?.chapter)
+        SourceCallBack.callBackBook(SourceCallBack.END_READ, ReadBook.bookSource, ReadBook.book)
         if (ReadBook.inBookshelf) {
             return super.finish()
         }

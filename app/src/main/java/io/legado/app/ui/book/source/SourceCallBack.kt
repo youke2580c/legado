@@ -16,7 +16,6 @@ object SourceCallBack {
     const val CLICK_BOOK_NAME = "clickBookName"
     const val CLICK_SHARE_BOOK = "clickShareBook"
     const val CLICK_CUSTOM_BUTTON = "clickCustomButton"
-    const val LONG_CLICK_CUSTOM_BUTTON = "longClickCustomButton"
     const val ADD_BOOK_SHELF = "addBookShelf"
     const val DEL_BOOK_SHELF = "delBookShelf"
     const val CLEAR_CACHE = "clearCache"
@@ -54,7 +53,7 @@ object SourceCallBack {
         }
     }
 
-    fun callBackBook(event: String, source: BookSource?, book: Book?, chapter: BookChapter? = null) {
+    fun callBackBook(event: String, source: BookSource?, book: Book?) {
         if (source == null || book == null || !source.eventListener) return
         val jsStr = source.getContentRule().callBackJs
         if (jsStr.isNullOrEmpty()) return
@@ -63,7 +62,7 @@ object SourceCallBack {
                 put("event", event)
                 put("result", null)
                 put("book", book)
-                put("chapter", chapter)
+                put("chapter", null)
             }
         }.onError {
             AppLog.put("${source.bookSourceName}\n书源执行回调事件${event}出错\n${it.localizedMessage}", it, true)

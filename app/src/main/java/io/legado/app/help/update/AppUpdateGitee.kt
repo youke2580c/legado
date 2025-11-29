@@ -9,7 +9,6 @@ import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.text
 import io.legado.app.utils.GSON
-import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import kotlinx.coroutines.CoroutineScope
 
@@ -30,7 +29,7 @@ object AppUpdateGitee : AppUpdate.AppUpdateInterface {
         val lastReleaseUrl = if (checkVariant.isBeta()) {
             "https://gitee.com/api/v5/repos/lyc486/legado/releases/tags/beta"
         } else {
-            "https://gitee.com/api/v5/repos/lyc486/legado/releases?page=1&per_page=3&direction=desc"
+            "https://gitee.com/api/v5/repos/lyc486/legado/releases/latest"
         }
         val res = okHttpClient.newCallResponse {
             url(lastReleaseUrl)
@@ -41,15 +40,6 @@ object AppUpdateGitee : AppUpdate.AppUpdateInterface {
         val body = res.body?.text()
         if (body.isNullOrBlank()) {
             throw NoStackTraceException("获取新版本出错")
-        }
-        if (!checkVariant.isBeta()) {
-            return GSON.fromJsonArray<GiteeRelease>(body)
-                .getOrElse {
-                    throw NoStackTraceException("获取新版本出错 " + it.localizedMessage)
-                }
-                .first { !it.prerelease }
-                .gitReleaseToAppReleaseInfo()
-                .sortedByDescending { it.createdAt }
         }
         return GSON.fromJsonObject<GiteeRelease>(body)
             .getOrElse {

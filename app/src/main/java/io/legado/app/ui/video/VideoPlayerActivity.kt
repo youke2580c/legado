@@ -48,7 +48,6 @@ import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setTintMutate
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
-import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
@@ -153,7 +152,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         viewModel.upStarMenuData.observe(this) { upStarMenu() }
         binding.root.setBackgroundColor(backgroundColor)
         if (VideoPlay.book != null) {
-            showBook(VideoPlay.book!!)
+            VideoPlay.book?.let { showBook(it) }
             if (VideoPlay.episodes.isNullOrEmpty()) {
                 binding.chapters.visibility = View.GONE
             } else {
@@ -424,22 +423,10 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                 }
             }
 
-            R.id.menu_copy_video_url -> {
-                val url = VideoPlay.videoUrl
-                if (url.isNullOrBlank()){
-                    this.toastOnUi("暂无播放地址")
-                    return true
-                }
-                sendToClip(url)
-            }
-            R.id.menu_open_other_video_player -> {
-                val url = VideoPlay.videoUrl
-                if (url.isNullOrBlank()){
-                    this.toastOnUi("暂无播放地址")
-                    return true
-                }
+            R.id.menu_copy_video_url -> VideoPlay.videoUrl?.let { sendToClip(it) }
+            R.id.menu_open_other_video_player -> VideoPlay.videoUrl?.let {
                 val intent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(url.toUri(), "video/*")
+                    setDataAndType(it.toUri(), "video/*")
                 }
                 startActivity(intent)
             }

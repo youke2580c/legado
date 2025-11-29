@@ -11,8 +11,6 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.Window
 import android.widget.PopupWindow
-import androidx.recyclerview.widget.GridLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
@@ -21,7 +19,6 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.PopupKeyboardToolBinding
-import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.utils.activity
@@ -45,8 +42,7 @@ class KeyboardToolPop(
     private val rootView: View,
     private val callBack: CallBack
 ) : PopupWindow(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
-    ViewTreeObserver.OnGlobalLayoutListener,
-    KeyboardAssistsConfig.CallBack {
+    ViewTreeObserver.OnGlobalLayoutListener {
 
     private val helpChar = "❓"
 
@@ -98,7 +94,6 @@ class KeyboardToolPop(
 
     @SuppressLint("SetTextI18n")
     private fun initRecyclerView() {
-        (binding.recyclerView.layoutManager as GridLayoutManager).spanCount = AppConfig.showBoardLine
         binding.recyclerView.adapter = adapter
         adapter.addHeaderView {
             ItemFilletTextBinding.inflate(context.layoutInflater, it, false).apply {
@@ -154,28 +149,11 @@ class KeyboardToolPop(
     }
 
     private fun config() {
-        contentView.activity?.showDialogFragment(KeyboardAssistsConfig(this))
-    }
-
-    override fun requestLayout() {
-        (binding.recyclerView.layoutManager as GridLayoutManager).spanCount = AppConfig.showBoardLine
-        binding.recyclerView.layoutManager?.requestLayout()
+        contentView.activity?.showDialogFragment<KeyboardAssistsConfig>()
     }
 
     inner class Adapter(context: Context) :
         RecyclerAdapter<KeyboardAssist, ItemFilletTextBinding>(context) {
-
-        private val itemClickListener = View.OnClickListener { view ->
-            val holder = view.tag as? ItemViewHolder
-            holder?.let {
-                val position = holder.layoutPosition
-                if (position != RecyclerView.NO_POSITION) {
-                    getItemByLayoutPosition(position)?.let { item ->
-                        callBack.sendText(item.value)
-                    }
-                }
-            }
-        }
 
         override fun getViewBinding(parent: ViewGroup): ItemFilletTextBinding {
             return ItemFilletTextBinding.inflate(inflater, parent, false)
@@ -193,8 +171,13 @@ class KeyboardToolPop(
         }
 
         override fun registerListener(holder: ItemViewHolder, binding: ItemFilletTextBinding) {
-            holder.itemView.tag = holder
-            holder.itemView.setOnClickListener(itemClickListener)
+            holder.itemView.apply {
+                setOnClickListener {
+                    getItemByLayoutPosition(holder.layoutPosition)?.let {
+                        callBack.sendText(it.value)
+                    }
+                }
+            }
         }
     }
 
