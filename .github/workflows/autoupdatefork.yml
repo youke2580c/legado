@@ -2,8 +2,9 @@
 name: update fork
 
 on:
+  workflow_dispatch:  # 允许手动触发
   schedule:
-    - cron: '0 16 * * *' # UTC 16:00
+    - cron: '0 16 * * *' # UTC 16:00(本地0)
 
 permissions:
   contents: write
