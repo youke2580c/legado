@@ -42,7 +42,10 @@ import kotlinx.coroutines.launch
 import java.util.LinkedList
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import kotlin.collections.forEach
 import kotlin.math.min
+import io.legado.app.model.RuleUpdate
+import io.legado.app.ui.book.source.SourceCallBack
 
 class MainViewModel(application: Application) : BaseViewModel(application) {
     private var threadCount = AppConfig.threadCount
@@ -50,6 +53,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     private var upTocPool = Executors.newFixedThreadPool(poolSize).asCoroutineDispatcher()
     private val waitUpTocBooks = LinkedList<String>()
     private val onUpTocBooks = ConcurrentHashMap.newKeySet<String>()
+    private val eventListenerSource = ConcurrentHashMap<BookSource, Boolean>()
     val onUpBooksLiveData = MutableLiveData<Int>()
     private var upTocJob: Job? = null
     private var cacheBookJob: Job? = null
@@ -58,6 +62,10 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     }
     val booksGridRecycledViewPool = RecycledViewPool().apply {
         setMaxRecycledViews(0, 100)
+    }
+    var callback: CallBack? = null
+    fun setActivityCallback(callback: CallBack) {
+        this.callback = callback
     }
 
     init {
@@ -90,6 +98,20 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     fun upAllBookToc() {
         execute {
             addToWaitUp(appDb.bookDao.hasUpdateBooks)
+        }
+    }
+
+    fun ruleSubsUp() {
+        execute {
+            val ruleSubs = appDb.ruleSubDao.all
+            for (ruleSub in ruleSubs) {
+                if (ruleSub.autoUpdate) {
+                    val checkResult = RuleUpdate.cacheSource(ruleSub)
+                    if(checkResult) {
+                        callback?.openImportUi(ruleSub.type, ruleSub.url)
+                    }
+                }
+            }
         }
     }
 
@@ -156,6 +178,13 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             }
             return
         }
+        if (source.eventListener) {
+            // 使用 putIfAbsent 确保只添加一次
+            if (eventListenerSource.putIfAbsent(source, true) == null) {
+                // 通知监听事件的书源，书架刷新开始
+                SourceCallBack.callBackSource(SourceCallBack.START_SHELF_REFRESH, source)
+            }
+        }
         kotlin.runCatching {
             val oldBook = book.copy()
             if (book.tocUrl.isBlank()) {
@@ -210,6 +239,11 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
      * 缓存书籍
      */
     private fun cacheBook() {
+        //开始缓存前，通知监听事件的书源，书架刷新已完成
+        eventListenerSource.toList().forEach {
+            SourceCallBack.callBackSource(SourceCallBack.END_SHELF_REFRESH, it.first)
+        }
+        eventListenerSource.clear()
         if (AppConfig.preDownloadNum == 0) return
         cacheBookJob?.cancel()
         cacheBookJob = viewModelScope.launch(upTocPool) {
@@ -244,6 +278,10 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         execute {
             appDb.bookDao.deleteNotShelfBook()
         }
+    }
+
+    interface CallBack {
+        fun openImportUi(type: Int, source: String)
     }
 
 }

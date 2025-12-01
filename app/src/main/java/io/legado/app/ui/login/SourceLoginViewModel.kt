@@ -7,26 +7,48 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseSource
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.model.ReadBook
 import io.legado.app.utils.toastOnUi
 
 class SourceLoginViewModel(application: Application) : BaseViewModel(application) {
 
     var source: BaseSource? = null
     var headerMap: Map<String, String> = emptyMap()
+    var book: Book? = null
+    var chapter: BookChapter? = null
+    var loginInfo: Map<String, String> = mutableMapOf()
 
     fun initData(intent: Intent, success: (bookSource: BaseSource) -> Unit, error: () -> Unit) {
         execute {
-            val sourceKey = intent.getStringExtra("key")
-                ?: throw NoStackTraceException("没有参数")
-            when (intent.getStringExtra("type")) {
-                "bookSource" -> source = appDb.bookSourceDao.getBookSource(sourceKey)
-                "rssSource" -> source = appDb.rssSourceDao.getByKey(sourceKey)
-                "httpTts" -> source = appDb.httpTTSDao.get(sourceKey.toLong())
+            val isReadBook = intent.getBooleanExtra("isReadBook", false)
+            if (isReadBook) {
+                source = ReadBook.bookSource
+                book = ReadBook.book?.also {
+                    chapter = appDb.bookChapterDao.getChapter(it.bookUrl, ReadBook.durChapterIndex)
+                }
+            } else {
+                val sourceKey = intent.getStringExtra("key")
+                    ?: throw NoStackTraceException("没有参数")
+                val type = intent.getStringExtra("type")
+                source = when (type) {
+                    "bookSource" ->  appDb.bookSourceDao.getBookSource(sourceKey)
+                    "rssSource" -> appDb.rssSourceDao.getByKey(sourceKey)
+                    "httpTts" -> appDb.httpTTSDao.get(sourceKey.toLong())
+                    else -> null
+                }
+                val bookUrl = intent.getStringExtra("bookUrl")
+                book = bookUrl?.let {
+                    appDb.bookDao.getBook(it) ?: appDb.searchBookDao.getSearchBook(it)?.toBook()
+                }
+                chapter = book?.let { appDb.bookChapterDao.getChapter(it.bookUrl, it.durChapterIndex) }
             }
             headerMap = runScriptWithContext {
                 source?.getHeaderMap(true) ?: emptyMap()
             }
+            source?.let{ loginInfo =it.getLoginInfoMap() }
             source
         }.onSuccess {
             if (it != null) {

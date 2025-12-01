@@ -24,7 +24,8 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.flow
 import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
-import kotlin.coroutines.coroutineContext
+import io.legado.app.help.book.isAudio
+import kotlinx.coroutines.currentCoroutineContext
 
 /**
  * 获取正文
@@ -59,23 +60,10 @@ object BookContent {
         val analyzeRule = AnalyzeRule(book, bookSource)
         analyzeRule.setContent(body, baseUrl)
         analyzeRule.setRedirectUrl(redirectUrl)
-        analyzeRule.setCoroutineContext(coroutineContext)
+        analyzeRule.setCoroutineContext(currentCoroutineContext())
         analyzeRule.setChapter(bookChapter)
         analyzeRule.setNextChapterUrl(mNextChapterUrl)
-        coroutineContext.ensureActive()
-        val titleRule = contentRule.title
-        if (!titleRule.isNullOrBlank()) {
-            val title = analyzeRule.runCatching {
-                getString(titleRule)
-            }.onFailure {
-                Debug.log(bookSource.bookSourceUrl, "获取标题出错, ${it.localizedMessage}")
-            }.getOrNull()
-            if (!title.isNullOrBlank()) {
-                bookChapter.title = title
-                bookChapter.titleMD5 = null
-                appDb.bookChapterDao.update(bookChapter)
-            }
-        }
+        currentCoroutineContext().ensureActive()
         var contentData = analyzeContent(
             book, baseUrl, redirectUrl, body, contentRule, bookChapter, bookSource, mNextChapterUrl
         )
@@ -88,12 +76,12 @@ object BookContent {
                     == NetworkUtils.getAbsoluteURL(redirectUrl, mNextChapterUrl)
                 ) break
                 nextUrlList.add(nextUrl)
-                coroutineContext.ensureActive()
+                currentCoroutineContext().ensureActive()
                 val analyzeUrl = AnalyzeUrl(
                     mUrl = nextUrl,
                     source = bookSource,
                     ruleData = book,
-                    coroutineContext = coroutineContext
+                    coroutineContext = currentCoroutineContext()
                 )
                 val res = analyzeUrl.getStrResponseAwait() //控制并发访问
                 res.body?.let { nextBody ->
@@ -120,7 +108,7 @@ object BookContent {
                     mUrl = urlStr,
                     source = bookSource,
                     ruleData = book,
-                    coroutineContext = coroutineContext
+                    coroutineContext = currentCoroutineContext()
                 )
                 val res = analyzeUrl.getStrResponseAwait() //控制并发访问
                 analyzeContent(
@@ -130,7 +118,7 @@ object BookContent {
                     printLog = false
                 ).first
             }.collect {
-                coroutineContext.ensureActive()
+                currentCoroutineContext().ensureActive()
                 contentList.add(it)
             }
         }
@@ -142,6 +130,30 @@ object BookContent {
             contentStr = analyzeRule.getString(replaceRegex, contentStr)
             contentStr = contentStr.split(AppPattern.LFRegex).joinToString("\n") { "　　$it" }
         }
+        val titleRule = contentRule.title //先正文再章节名称
+        if (!titleRule.isNullOrBlank()) {
+            var title = analyzeRule.runCatching {
+                getString(titleRule)
+            }.onFailure {
+                Debug.log(bookSource.bookSourceUrl, "获取标题出错, ${it.localizedMessage}")
+            }.getOrNull()
+            if (!title.isNullOrBlank()) {
+                val matchResult = AppPattern.imgRegex.find(title)
+                if (matchResult != null) {
+                    matchResult.groupValues[1]
+                    val (group1,group2) = matchResult.destructured
+                    title = if (group1 != "") {
+                        group1
+                    } else {
+                        bookChapter.title
+                    }
+                    bookChapter.imgUrl = group2
+                }
+                bookChapter.title = title
+                bookChapter.titleMD5 = null
+                appDb.bookChapterDao.update(bookChapter)
+            }
+        }
         Debug.log(bookSource.bookSourceUrl, "┌获取章节名称")
         Debug.log(bookSource.bookSourceUrl, "└${bookChapter.title}")
         Debug.log(bookSource.bookSourceUrl, "┌获取正文内容")
@@ -151,6 +163,14 @@ object BookContent {
         }
         if (needSave) {
             BookHelp.saveContent(bookSource, book, bookChapter, contentStr)
+        }
+        if (book.isAudio) {
+            val index = contentStr.indexOf("\n")
+            if (index != -1) {
+                contentStr.substring(index).trimIndent()
+                    .takeIf { it.isNotEmpty() }?.let { bookChapter.putLyric(it) }
+                contentStr = contentStr.substring(0, index)
+            }
         }
         return contentStr
     }
@@ -170,7 +190,7 @@ object BookContent {
     ): Pair<String, List<String>> {
         val analyzeRule = AnalyzeRule(book, bookSource)
         analyzeRule.setContent(body, baseUrl)
-        analyzeRule.setCoroutineContext(coroutineContext)
+        analyzeRule.setCoroutineContext(currentCoroutineContext())
         val rUrl = analyzeRule.setRedirectUrl(redirectUrl)
         analyzeRule.setNextChapterUrl(nextChapterUrl)
         val nextUrlList = arrayListOf<String>()

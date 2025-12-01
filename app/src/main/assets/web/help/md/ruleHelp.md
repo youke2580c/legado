@@ -24,6 +24,7 @@
 
 > `1000` 访问间隔1s  
 > `20/60000` 60s内访问次数20  
+> `source.putConcurrent(str: String)` 更改并发率(书源的并发率规则不为空时才生效)
 
 * 书源类型: 文件
 > 对于类似知轩藏书提供文件整合下载的网站，可以在书源详情的下载URL规则获取文件链接
@@ -43,7 +44,8 @@
 [
     {
         "name": "telephone",
-        "type": "text"
+        "type": "text",
+        "default": "123"
     },
     {
         "name": "password",
@@ -65,11 +67,23 @@
             "layout_flexBasisPercent": -1,
             "layout_wrapBefore": false
         }
+    },
+    {
+        "name": "评论开关",
+        "type": "toggle",
+        "chars": ["❎", "☑️"],
+        "default": "☑️"
+    },
+    {
+        "name": "显示书名",
+        "viewName": "book?.name||'未获取到书名'",
+        "type": "button"
     }
 ]
 ```
 * 登录URL
-> 可填写登录链接或者实现登录UI的登录逻辑的JavaScript
+> 可填写登录链接或者实现登录UI的登录逻辑的JavaScript  
+变量`isLongClick`为true时表示为按钮长按点击
 ```
 示范填写
 function login() {
@@ -144,6 +158,11 @@ https://www.baidu.com,{"js":"java.headerMap.put('xxx', 'yyy')"}
 https://www.baidu.com,{"js":"java.url=java.url+'yyyy'"}
 ```
 
+* url添加dnsIp参数,解析url时执行,强制指定链接访问的ip地址,例
+```
+https://dns.google,{"dnsIp":"8.8.8.8"}
+```
+
 * 增加js方法，用于重定向拦截
   * `java.get(urlStr: String, headers: Map<String, String>)`
   * `java.post(urlStr: String, body: String, headers: Map<String, String>)`
@@ -201,6 +220,27 @@ let options = {
 * 购买操作
 > 可直接填写链接或者JavaScript，如果执行结果是网络链接将会自动打开浏览器,js返回true自动刷新目录和当前章节
 
+* 回调操作
+> 先启用事件监听按钮，然后软件触发事件时会执行回调规则的js代码。如果js返回true会消费事件，之后软件部分原本操作不会再执行。  
+`event`变量值对应的事件名称，目前的事件有
+```js
+"shareBook" //详情页分享按钮
+"clickBookName" //详情页点击书名
+"longClickBookName" //详情页长按书名
+"clickAuthor" //详情页点击作者
+"longClickAuthor" //详情页长按作者
+"clickCustomButton" //书源自定义按钮
+"longClickCustomButton" //长按自定义按钮（只存在小说的正文界面）
+"clearCache" //详情页清理缓存
+"addBookShelf" //添加到书架
+"delBookShelf" //移除书架
+"saveRead" //保存阅读进度
+"startRead" //开始阅读
+"endRead" //结束阅读
+"startShelfRefresh" //开始书架刷新
+"endShelfRefresh" //结束书架刷新
+```
+
 * 图片解密
 > 适用于图片需要二次解密的情况，直接填写JavaScript，返回解密后的`ByteArray`  
 > 部分变量说明：java（仅支持[js扩展类](https://github.com/gedoor/legado/blob/master/app/src/main/java/io/legado/app/help/JsExtensions.kt)），result为待解密图片的`ByteArray`，src为图片链接
@@ -241,4 +281,39 @@ function decodeImage(data, key) {
 }
 
 decodeImage(result, key)
+```
+* 书源类型: 音频
+> 将正文获得的字符串作为音频链接，需要多个链接拼接成一条音频时返回序列化后的链接数组。
+
+* 音频书籍获取歌词
+> 正文内容第一行作为音频播放链接，其余内容作为歌词显示
+
+```js
+result = "https://example.mp3" + "\n" + "[00:00.00][by:花丸的蜜柑面包]"
+```
+
+* 网页JS
+> `window.close()` 关闭浏览器界面  
+> `screen.orientation.lock()` 全屏后可控制屏幕方向  
+
+> 本地html中的额外支持的js函数  
+
+> 异步执行阅读函数，并返回字符串结果
+```js
+window.run("java.toast('执行成功');'成功'")
+.then(r=>alert(r))
+.catch(e=>alert("执行出错:"+e));
+```
+
+* 书源控制正文图片
+> 图片链接中含有"js"键时，点击图片会执行一次键值的函数  
+> 加载图片时，执行结果作为图片链接  
+
+> "style"键值控制单个图片的样式  
+> 目前支持"text"、"full"、"single"、"left"、"right"  
+> "TEXT"且处于段尾时，占1.5个字符位  
+
+```js
+var url = `https://www.baidu.com/img/flexible/logo/pc/result.png,{"js": "if (book) java.toast('这是'+book.name+'正文的图被点击了');result", "style": "right"}`;
+result = `<img src = "${url}">`;
 ```
