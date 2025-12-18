@@ -163,7 +163,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     private val tocActivity =
         registerForActivityResult(TocActivityResult()) {
             it?.let {
-                viewModel.openChapter(it.first, it.second)
+                viewModel.openChapter(it[0] as Int, it[1] as Int)
             }
         }
     private val sourceEditActivity =
@@ -1274,7 +1274,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun showLogin() {
         ReadBook.bookSource?.let {
             startActivity<SourceLoginActivity> {
-                putExtra("isReadBook", true)
+                putExtra("bookType", BookType.text)
             }
         }
     }
@@ -1331,9 +1331,9 @@ class ReadBookActivity : BaseReadBookActivity(),
     /**
      * 点击图片
      */
-    override fun clickImg(clickjs: String) {
-        val braceIndex = clickjs.indexOf(",{")
-        val braceIndex2 = if (braceIndex == -1) clickjs.indexOf(", {") else -1
+    override fun clickImg(src: String) {
+        val braceIndex = src.indexOf(",{")
+        val braceIndex2 = if (braceIndex == -1) src.indexOf(", {") else -1
         if (braceIndex != -1 || braceIndex2 != -1) {
             val book = ReadBook.book ?: return
             val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
@@ -1343,10 +1343,10 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
             val (result, urlOptionStr) = when {
                 braceIndex != -1 -> {
-                    clickjs.take(braceIndex) to clickjs.substring(braceIndex + 1)
+                    src.take(braceIndex) to src.substring(braceIndex + 1)
                 }
                 else -> {
-                    clickjs.take(braceIndex2) to clickjs.substring(braceIndex2 + 2)
+                    src.take(braceIndex2) to src.substring(braceIndex2 + 2)
                 }
             }
             if (urlOptionStr.isJsonObject()) {

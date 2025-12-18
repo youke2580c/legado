@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Context.MODE_PRIVATE
 import android.content.SharedPreferences
+import android.net.Uri
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
@@ -24,6 +25,7 @@ import io.legado.app.data.entities.RssReadRecord
 import io.legado.app.data.entities.RssSource
 import io.legado.app.data.entities.RssStar
 import io.legado.app.exception.ContentEmptyException
+import io.legado.app.help.book.getDanmaku
 import io.legado.app.help.book.update
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.gsyVideo.ExoVideoManager
@@ -34,6 +36,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.rss.Rss
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.source.SourceCallBack
+import io.legado.app.utils.FileUtils
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.externalCache
 import io.legado.app.utils.postEvent
@@ -73,8 +76,11 @@ object VideoPlay : CoroutineScope by MainScope(){
         set(value) {
             videoPrefs.edit { putBoolean("fullBottomProgressBar", value) }
         }
+    /**  弹幕滚动速度  **/
+    var danmakuSpeed = 1.2f
 
     val videoManager by lazy { ExoVideoManager() }
+    private var isLoading = false
     var videoUrl: String? = null //播放链接
     var singleUrl = false
     var videoTitle: String? = null
@@ -97,12 +103,18 @@ object VideoPlay : CoroutineScope by MainScope(){
     var rssStar: RssStar? = null
     /**  订阅历史记录,收藏优先  **/
     var rssRecord: RssReadRecord? = null
+    /**  弹幕相关  **/
+    var danmakuFile: File? = null
+    var danmakuStr: String? = null
+    var danmakuShow = true
 
     /**
      * 开始播放
      */
     fun startPlay(player: StandardGSYVideoPlayer) {
         if (source == null) return
+        danmakuStr = null
+        danmakuFile = null
         val player = player.getCurrentPlayer()
         durChapterPos.takeIf { it > 0 }?.toLong()?.let { player.seekOnStart = it }
         if (singleUrl) {
@@ -114,7 +126,8 @@ object VideoPlay : CoroutineScope by MainScope(){
                 ruleData = book,
                 chapter = null
             )
-            player.setUp(analyzeUrl.url, false, File(appCtx.externalCache, "exoplayer"),analyzeUrl.headerMap.toMap(), videoTitle)
+            player.mapHeadData = analyzeUrl.headerMap
+            player.setUp(analyzeUrl.url, false, File(appCtx.externalCache, "exoplayer"), videoTitle)
             if (autoPlay) {
                 player.startPlayLogic()
             }
@@ -141,20 +154,29 @@ object VideoPlay : CoroutineScope by MainScope(){
                 }
             } else {
                 Rss.getContent(this, rssArticle, ruleContent, s)
-                    .onSuccess(IO) { body ->
-                        if (body.isBlank()) {
+                    .onSuccess(IO) { content ->
+                        val content = content.trim()
+                        videoUrl = if (content.isEmpty()) {
                             throw ContentEmptyException("正文为空")
+                        } else if (content.startsWith("<")) { //当作mpd文本
+                            val file = File(FileUtils.getCachePath(), "temp.mpd")
+                            file.writeText(content)
+                            Uri.fromFile(file).toString()
+                        } else {
+                            NetworkUtils.getAbsoluteURL(rssArticle.link, content)
                         }
-                        val url = NetworkUtils.getAbsoluteURL(rssArticle.link, body)
-                        videoUrl = url
                         val analyzeUrl = AnalyzeUrl(
-                            url,
+                            videoUrl!!,
                             source = source,
                             ruleData = rssArticle
                         )
+                        val playUrl = analyzeUrl.url
                         withContext(Main) {
+                            if (playUrl.endsWith(".mpd")) {
+                                player.overrideExtension = "mpd"
+                            }
                             player.mapHeadData = analyzeUrl.headerMap
-                            player.setUp(analyzeUrl.url, false, File(appCtx.externalCache, "exoplayer"), rssArticle.title)
+                            player.setUp(playUrl, false, File(appCtx.externalCache, "exoplayer"), rssArticle.title)
                             if (autoPlay) {
                                 player.startPlayLogic()
                             }
@@ -165,6 +187,7 @@ object VideoPlay : CoroutineScope by MainScope(){
             }
             return
         }
+        val book = book
         if (book == null) {
             appCtx.toastOnUi("未找到书籍")
             return
@@ -183,33 +206,48 @@ object VideoPlay : CoroutineScope by MainScope(){
                 episodes?.getOrNull(chapterInVolumeIndex)
             }
         }
+        val chapter = chapter
         if (chapter == null) {
             appCtx.toastOnUi("未找到章节")
             return
         }
-        WebBook.getContent(this, source as BookSource, book!!, chapter!!)
+        WebBook.getContent(this, source as BookSource, book, chapter)
             .onSuccess(IO) { content ->
-                if (content.isEmpty()) {
-                    appCtx.toastOnUi("未获取到资源链接")
+                val content = content.trim()
+                videoUrl = if (content.isEmpty()) {
+                    throw ContentEmptyException("正文为空")
+                } else if (content.startsWith("<")) { //当作mpd文本
+                    val file = File(FileUtils.getCachePath(), "temp.mpd")
+                    file.writeText(content)
+                    Uri.fromFile(file).toString()
                 } else {
-                    videoUrl = content
-                    val analyzeUrl = AnalyzeUrl(
-                        content,
-                        source = source,
-                        ruleData = book,
-                        chapter = chapter
-                    )
-                    withContext(Main) {
-                        player.mapHeadData = analyzeUrl.headerMap
-                        player.setUp(analyzeUrl.url, false, File(appCtx.externalCache, "exoplayer"), chapter!!.title)
-                        if (autoPlay) {
-                            player.startPlayLogic()
-                        }
+                    content
+                }
+                val analyzeUrl = AnalyzeUrl(
+                    videoUrl!!,
+                    source = source,
+                    ruleData = book,
+                    chapter = chapter
+                )
+                when (val danmaku = chapter!!.getDanmaku()) {
+                    is String -> danmakuStr = danmaku
+                    is File -> danmakuFile = danmaku
+                }
+                val playUrl = analyzeUrl.url
+                withContext(Main) {
+                    if (playUrl.endsWith(".mpd")) {
+                        player.overrideExtension = "mpd"
+                    }
+                    player.mapHeadData = analyzeUrl.headerMap
+                    player.setUp(playUrl, false, File(appCtx.externalCache, "exoplayer"), chapter!!.title)
+                    if (autoPlay) {
+                        player.startPlayLogic()
                     }
                 }
             }.onError {
                 AppLog.put("获取资源链接出错\n$it", it, true)
             }
+        isLoading = true
     }
 
     /**
@@ -239,23 +277,27 @@ object VideoPlay : CoroutineScope by MainScope(){
             videoManager.listener().onCompletion()
         }
         videoManager.releaseMediaPlayer()
-        //还原所有状态
-        videoUrl = null
-        singleUrl = false
-        videoTitle = null
-        source = null
-        book = null
-        toc = null
-        chapter = null
-        volumes.clear()
-        episodes = null
-        chapterInVolumeIndex = 0
-        durVolumeIndex = 0
-        durVolume = null
-        durChapterPos = 0
-        inBookshelf = true
-        rssStar = null
-        rssRecord = null
+        if (!isLoading) {
+            //还原所有状态
+            videoUrl = null
+            singleUrl = false
+            videoTitle = null
+            source = null
+            book = null
+            toc = null
+            chapter = null
+            volumes.clear()
+            episodes = null
+            chapterInVolumeIndex = 0
+            durVolumeIndex = 0
+            durVolume = null
+            durChapterPos = 0
+            inBookshelf = true
+            rssStar = null
+            rssRecord = null
+            danmakuStr = null
+            danmakuFile = null
+        }
     }
     /**
      * 暂停播放
@@ -311,6 +353,7 @@ object VideoPlay : CoroutineScope by MainScope(){
     }
 
     fun initSource(sourceKey: String?, sourceType: Int?, bookUrl: String?, record:String?): Boolean {
+        isLoading = true
         source = sourceKey?.let {
             when (sourceType) {
                 SourceType.book -> appDb.bookSourceDao.getBookSource(it)
@@ -350,17 +393,6 @@ object VideoPlay : CoroutineScope by MainScope(){
             }
         }
         return true
-    }
-
-    fun upSource() {
-        when (source) {
-            is BookSource -> {
-                source = appDb.bookSourceDao.getBookSource(source!!.getKey())
-            }
-            is RssSource -> {
-                source = appDb.rssSourceDao.getByKey(source!!.getKey())
-            }
-        }
     }
 
     fun upEpisodes() {

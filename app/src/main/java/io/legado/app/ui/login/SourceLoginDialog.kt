@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.DialogInterface
 import android.os.Bundle
 import android.text.InputType
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.setPadding
@@ -18,6 +19,7 @@ import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.databinding.DialogLoginBinding
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.ItemSourceEditBinding
+import io.legado.app.databinding.ItemSelectorSingleBinding
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.about.AppLogDialog
@@ -43,9 +45,16 @@ import kotlin.text.lastIndexOf
 import kotlin.text.startsWith
 import kotlin.text.substring
 import android.view.MotionEvent
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.LinearLayout
+import android.widget.Spinner
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.AppCompatSpinner
+import io.legado.app.data.entities.rule.RowUi.Type
 import io.legado.app.ui.widget.text.TextInputLayout
+import kotlin.text.isNotEmpty
 
 
 class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
@@ -56,10 +65,11 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
     private var oKToClose = false
     private var rowUis: List<RowUi>? = null
     private var rowUiName = arrayListOf<String>()
+    private var hasChange = false
     private val sourceLoginJsExtensions by lazy {
         SourceLoginJsExtensions(activity as AppCompatActivity, viewModel.source,
             object : SourceLoginJsExtensions.Callback {
-                override fun upUiData(data: Map<String, String>) {
+                override fun upUiData(data: Map<String, String?>?) {
                     activity?.runOnUiThread { // 在主线程中更新 UI
                         handleUIDataUpdate(data)
                     }
@@ -68,26 +78,88 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
     }
 
     @SuppressLint("SetTextI18n")
-    private fun handleUIDataUpdate(data: Map<String, String>) {
+    private fun handleUIDataUpdate(data: Map<String, String?>?) {
+        val loginInfo = viewModel.loginInfo
+        if (data == null) {
+            rowUis?.forEachIndexed { index, rowUi ->
+                val default = rowUi.default
+                when (val rowView = binding.root.findViewById<View>(index + 1000)) {
+                    is TextInputLayout -> {
+                        rowView.editText?.setText(default ?: "")
+                    }
+
+                    is TextView -> {
+                        when (rowUi.type) {
+                            Type.button -> {
+                                rowView.text = rowUi.name
+                            }
+                            Type.toggle -> {
+                                val char = default ?: run{
+                                    val chars = rowUi.chars?.filterNotNull() ?: listOf("chars is null")
+                                    chars.getOrNull(0) ?: ""
+                                }
+                                loginInfo[rowUi.name] = char
+                                val name =  rowUi.viewName ?: rowUi.name
+                                val left = rowUi.style?.layout_justifySelf != "right"
+                                rowView.text = if (left) char + name else name + char
+                            }
+                        }
+                    }
+
+                    is LinearLayout -> {
+                        val items = rowUi.chars?.filterNotNull() ?: listOf("chars","is null")
+                        val index = items.indexOf(default)
+                        loginInfo[rowUi.name] = default ?: run{
+                            items.getOrNull(0) ?: ""
+                        }
+                        rowView.findViewById<AppCompatSpinner>(R.id.sp_type)?.setSelectionSafely(index)
+                    }
+                }
+            }
+            return
+        }
+
         data.forEach { (key, value) ->
             val index = rowUiName.indexOf(key)
+            val value = value
             if (index != -1) {
                 when (val rowView = binding.root.findViewById<View>(index + 1000)) {
                     is TextInputLayout -> {
-                        val text = value
-                        rowView.editText?.setText(text)
+                        val value = value ?: run {
+                            val rowUi = rowUis?.getOrNull(index) ?: return@forEach
+                            rowUi.default ?: ""
+                        }
+                        rowView.editText?.setText(value)
                     }
+
                     is TextView -> {
-                        val rowUi = rowUis?.get(index) ?: return
+                        val rowUi = rowUis?.getOrNull(index) ?: return@forEach
                         when (rowUi.type) {
-                            RowUi.Type.button -> {
-                                rowView.text = value
+                            Type.button -> {
+                                rowView.text = value ?: key
                             }
-                            RowUi.Type.toggle -> {
-                                rowUi.default = value
-                                rowView.text = value + rowUi.name
+
+                            Type.toggle -> {
+                                val char = value ?: run{
+                                    val chars = rowUi.chars?.filterNotNull() ?: listOf("chars is null")
+                                    chars.getOrNull(0) ?: ""
+                                }
+                                loginInfo[rowUi.name] = char
+                                val name =  rowUi.viewName ?: rowUi.name
+                                val left = rowUi.style?.layout_justifySelf != "right"
+                                rowView.text = if (left) char + name else name + char
                             }
                         }
+                    }
+
+                    is LinearLayout -> {
+                        val rowUi = rowUis?.getOrNull(index) ?: return@forEach
+                        val items = rowUi.chars?.filterNotNull() ?: listOf("chars","is null")
+                        val index = items.indexOf(value)
+                        loginInfo[rowUi.name] = value ?: run{
+                            items.getOrNull(0) ?: ""
+                        }
+                        rowView.findViewById<AppCompatSpinner>(R.id.sp_type)?.setSelectionSafely(index)
                     }
                 }
             }
@@ -123,53 +195,170 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
     @SuppressLint("ClickableViewAccessibility", "SetTextI18n")
     private fun buttonUi(source: BaseSource, rowUis: List<RowUi>?) {
         val loginInfo = viewModel.loginInfo
+        rowUiName.clear()
         rowUis?.forEachIndexed { index, rowUi ->
             val type = rowUi.type
             val name = rowUi.name
+            val viewName = rowUi.viewName
             rowUiName.add(name)
             when (type) {
-                RowUi.Type.text -> ItemSourceEditBinding.inflate(
+                Type.text -> ItemSourceEditBinding.inflate(
                     layoutInflater,
                     binding.root,
                     false
                 ).let {
                     binding.flexbox.addView(it.root)
+                    rowUi.style().apply {
+                        when (this.layout_justifySelf) {
+                            "center" -> it.editText.gravity = Gravity.CENTER
+                            "flex_end" -> it.editText.gravity = Gravity.END
+                        }
+                        apply(it.root)
+                    }
                     it.root.id = index + 1000
-                    it.textInputLayout.hint = name
+                    if (viewName == null) {
+                        it.textInputLayout.hint = name
+                    } else if (viewName.length in 3..9 && viewName.first() == '\'' && viewName.last() == '\'') {
+                        it.textInputLayout.hint = viewName.substring(1, viewName.length - 1)
+                    } else {
+                        it.textInputLayout.hint = name
+                        execute {
+                            evalUiJs(viewName)
+                        }.onSuccess { n ->
+                            if (n.isNullOrEmpty()) {
+                                it.textInputLayout.hint = "null"
+                            } else {
+                                it.textInputLayout.hint = n
+                            }
+                        }.onError{ _ ->
+                            it.textInputLayout.hint = "err"
+                        }
+                    }
                     it.editText.setText(loginInfo[name])
                 }
 
-                RowUi.Type.password -> ItemSourceEditBinding.inflate(
+                Type.password -> ItemSourceEditBinding.inflate(
                     layoutInflater,
                     binding.root,
                     false
                 ).let {
                     binding.flexbox.addView(it.root)
+                    rowUi.style().apply {
+                        when (this.layout_justifySelf) {
+                            "center" -> it.editText.gravity = Gravity.CENTER
+                            "flex_end" -> it.editText.gravity = Gravity.END
+                        }
+                        apply(it.root)
+                    }
                     it.root.id = index + 1000
-                    it.textInputLayout.hint = name
+                    if (viewName == null) {
+                        it.textInputLayout.hint = name
+                    } else if (viewName.length in 3..9 && viewName.first() == '\'' && viewName.last() == '\'') {
+                        it.textInputLayout.hint = viewName.substring(1, viewName.length - 1)
+                    } else {
+                        it.textInputLayout.hint = name
+                        execute {
+                            evalUiJs(viewName)
+                        }.onSuccess { n ->
+                            if (n.isNullOrEmpty()) {
+                                it.textInputLayout.hint = "null"
+                            } else {
+                                it.textInputLayout.hint = n
+                            }
+                        }.onError{ _ ->
+                            it.textInputLayout.hint = "err"
+                        }
+                    }
                     it.editText.inputType =
                         InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_CLASS_TEXT
                     it.editText.setText(loginInfo[name])
                 }
 
-                RowUi.Type.button -> ItemFilletTextBinding.inflate(
+                Type.select -> ItemSelectorSingleBinding.inflate(
+                    layoutInflater,
+                    binding.root,
+                    false
+                ).let {
+                    if (viewName == null) {
+                        it.spName.text = name
+                    } else if (viewName.length in 3..9 && viewName.first() == '\'' && viewName.last() == '\'') {
+                        it.spName.text = viewName.substring(1, viewName.length - 1)
+                    } else {
+                        it.spName.text = name
+                        execute {
+                            evalUiJs(viewName)
+                        }.onSuccess { n ->
+                            if (n.isNullOrEmpty()) {
+                                it.spName.text = "null"
+                            } else {
+                                it.spName.text = n
+                            }
+                        }.onError{ _ ->
+                            it.spName.text = "err"
+                        }
+                    }
+                    val items = rowUi.chars?.filterNotNull() ?: listOf("chars","is null")
+                    val adapter = ArrayAdapter(
+                        requireContext(),
+                        R.layout.item_text_common,
+                        items
+                    )
+                    adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                    val selector = it.spType
+                    selector.adapter = adapter
+                    val char = loginInfo[name]?.takeIf { c -> c.isNotEmpty() } ?: rowUi.default.toString()
+                    loginInfo[name] = char
+                    val i = items.indexOf(char)
+                    selector.setSelectionSafely(i)
+                    selector.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                        override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                            hasChange = true
+                            loginInfo[name] = items[position]
+                        }
+                        override fun onNothingSelected(parent: AdapterView<*>?) {
+                        }
+                    }
+                    binding.flexbox.addView(it.root)
+                    rowUi.style().apply {
+                        when (this.layout_justifySelf) {
+                            "flex_start" -> selector.gravity = Gravity.START
+                            "flex_end" -> selector.gravity = Gravity.END
+                        }
+                        apply(it.root)
+                    }
+                    it.root.id = index + 1000
+                }
+
+                Type.button -> ItemFilletTextBinding.inflate(
                     layoutInflater,
                     binding.root,
                     false
                 ).let {
                     binding.flexbox.addView(it.root)
-                    rowUi.style().apply(it.root)
+                    rowUi.style().apply {
+                        when (this.layout_justifySelf) {
+                            "flex_start" -> it.textView.gravity = Gravity.START
+                            "flex_end" -> it.textView.gravity = Gravity.END
+                        }
+                        apply(it.root)
+                    }
                     it.root.id = index + 1000
-                    it.textView.text = name
-                    rowUi.viewName?.let { jsStr ->
+                    if (viewName == null) {
+                        it.textView.text = name
+                    } else if (viewName.length in 3..9 && viewName.first() == '\'' && viewName.last() == '\'') {
+                        it.textView.text = viewName.substring(1, viewName.length - 1)
+                    } else {
+                        it.textView.text = name
                         execute {
-                            evalUiJs(jsStr)
+                            evalUiJs(viewName)
                         }.onSuccess { n ->
                             if (n.isNullOrEmpty()) {
-                                it.textView.text = "err null"
+                                it.textView.text = "null"
                             } else {
                                 it.textView.text = n
                             }
+                        }.onError{ _ ->
+                            it.textView.text = "err"
                         }
                     }
                     it.textView.setPadding(16.dpToPx())
@@ -197,27 +386,47 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                     }
                 }
 
-                RowUi.Type.toggle -> ItemFilletTextBinding.inflate(
+                Type.toggle -> ItemFilletTextBinding.inflate(
                     layoutInflater,
                     binding.root,
                     false
                 ).let {
+                    var newName = name
+                    var left = true
                     binding.flexbox.addView(it.root)
-                    rowUi.style().apply(it.root)
+                    rowUi.style().apply {
+                        when (this.layout_justifySelf) {
+                            "flex_start" -> it.textView.gravity = Gravity.START
+                            "flex_end" -> it.textView.gravity = Gravity.END
+                            "right" -> left = false
+                        }
+                        apply(it.root)
+                    }
                     it.root.id = index + 1000
-                    val chars = rowUi.chars ?: arrayOf("chars is null")
+                    val chars = rowUi.chars?.filterNotNull() ?: listOf("chars is null")
                     var char = loginInfo[name]?.takeIf { c -> c.isNotEmpty() } ?: rowUi.default ?: chars.getOrNull(0) ?: "chars is []"
-                    rowUi.default = char
-                    it.textView.text = char + name
-                    rowUi.viewName?.let { jsStr ->
+                    loginInfo[name] = char
+                    if (viewName == null) {
+                        it.textView.text = if (left) char + name else name + char
+                    } else if (viewName.length in 3..9 && viewName.first() == '\'' && viewName.last() == '\'') {
+                        val n = viewName.substring(1, viewName.length - 1)
+                        rowUi.viewName = n
+                        newName = n
+                        it.textView.text = if (left) char + n else n + char
+                    } else {
+                        it.textView.text = if (left) char + name else name + char
                         execute {
-                            evalUiJs(jsStr)
+                            evalUiJs(viewName)
                         }.onSuccess { n ->
                             if (n.isNullOrEmpty()) {
-                                it.textView.text = "err null"
+                                it.textView.text = char + "null"
                             } else {
-                                it.textView.text = n
+                                rowUi.viewName = n //存放新名字，在回调handleUIDataUpdate时用
+                                newName = n //下面切换时用
+                                it.textView.text = if (left) char + n else n + char
                             }
+                        }.onError{ _ ->
+                            it.textView.text = char + "err"
                         }
                     }
                     it.textView.setPadding(16.dpToPx())
@@ -236,17 +445,11 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                                 }
                                 lastClickTime = upTime
                                 val currentIndex = chars.indexOf(char)
-                                if (currentIndex == -1) {
-                                    char = chars.getOrNull(0) ?: ""
-                                    rowUi.default = char
-                                    it.textView.text = char + name
-                                }
-                                else {
-                                    val nextIndex = (currentIndex + 1) % chars.size
-                                    char = chars.getOrNull(nextIndex) ?: ""
-                                    rowUi.default = char
-                                    it.textView.text = char + name
-                                }
+                                val nextIndex = (currentIndex + 1) % chars.size
+                                char = chars.getOrNull(nextIndex) ?: ""
+                                hasChange = true
+                                loginInfo[name] = char
+                                it.textView.text = if (left) char + newName else newName + char
                                 handleButtonClick(source, rowUi, rowUis, upTime > downTime + 666)
                             }
                             MotionEvent.ACTION_CANCEL -> {
@@ -262,7 +465,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
             when (item.itemId) {
                 R.id.menu_ok -> {
                     oKToClose = true
-                    val loginData = getLoginData(rowUis)
+                    val loginData = getLoginData(rowUis, true)
                     login(source, loginData)
                 }
 
@@ -286,20 +489,20 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         val source = viewModel.source ?: return
         val loginUiStr = source.loginUi ?: return
-        val jsCode = loginUiStr.let {
+        val codeStr = loginUiStr.let {
             when {
                 it.startsWith("@js:") -> it.substring(4)
                 it.startsWith("<js>") -> it.substring(4, it.lastIndexOf("<"))
                 else -> null
             }
         }
-        if (jsCode != null) {
+        if (codeStr != null) {
             lifecycleScope.launch(Main) {
-                rowUis = loginUi(evalUiJs(jsCode))
+                val loginUiJson = evalUiJs(codeStr)
+                rowUis = loginUi(loginUiJson)
                 buttonUi(source, rowUis)
             }
-        }
-        else {
+        } else {
             rowUis = loginUi(loginUiStr)
             buttonUi(source, rowUis)
         }
@@ -335,25 +538,25 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
         }
     }
 
-    private fun getLoginData(rowUis: List<RowUi>?): HashMap<String, String> {
+    private fun getLoginData(rowUis: List<RowUi>?, save: Boolean = false): MutableMap<String, String> {
         val loginData = hashMapOf<String, String>()
         rowUis?.forEachIndexed { index, rowUi ->
             when (rowUi.type) {
-                "text", "password" -> {
+                Type.text, Type.password -> {
                     val rowView = binding.root.findViewById<View>(index + 1000)
                     ItemSourceEditBinding.bind(rowView).editText.text.let {
                         loginData[rowUi.name] = it?.toString() ?: rowUi.default ?: "" //没文本的时候存空字符串,而不是删除loginInfo
                     }
                 }
-                "toggle" -> {
-                    loginData[rowUi.name] = rowUi.default.toString()
-                }
             }
         }
-        return loginData
+        if (save) {
+            return viewModel.loginInfo.apply { putAll(loginData) }
+        }
+        return viewModel.loginInfo.toMutableMap().apply { putAll(loginData) }
     }
 
-    private fun login(source: BaseSource, loginData: HashMap<String, String>) {
+    private fun login(source: BaseSource, loginData: MutableMap<String, String>) {
         lifecycleScope.launch(IO) {
             if (loginData.isEmpty()) {
                 source.removeLoginInfo()
@@ -379,25 +582,23 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
     }
 
     override fun onDismiss(dialog: DialogInterface) {
-        if (!oKToClose) {
-            lifecycleScope.launch(IO) {
-                val loginInfo = viewModel.loginInfo.toMutableMap()
-                rowUis?.forEachIndexed { index, rowUi ->
-                    when (rowUi.type) {
-                        "toggle" -> {
-                            loginInfo[rowUi.name] = rowUi.default.toString()
-                        }
-                    }
-                }
-                if (loginInfo.isEmpty()) {
-                    viewModel.source?.removeLoginInfo()
-                } else {
-                    viewModel.source?.putLoginInfo(GSON.toJson(loginInfo))
-                }
+        if (!oKToClose && hasChange) {
+            val loginInfo = viewModel.loginInfo
+            if (loginInfo.isEmpty()) {
+                viewModel.source?.removeLoginInfo()
+            } else {
+                viewModel.source?.putLoginInfo(GSON.toJson(loginInfo))
             }
         }
         super.onDismiss(dialog)
         activity?.finish()
+    }
+
+    private fun Spinner.setSelectionSafely(position: Int) {
+        val count = adapter?.count ?: 0
+        if (count > 0) {
+            setSelection(position.coerceIn(0, count - 1))
+        }
     }
 
 }

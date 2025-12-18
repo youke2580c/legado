@@ -16,6 +16,7 @@ import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
+import io.legado.app.constant.EventBus
 import io.legado.app.constant.Theme
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -42,7 +43,6 @@ import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.model.BookCover
-import io.legado.app.model.VideoPlay
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.audio.AudioPlayActivity
@@ -72,6 +72,7 @@ import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.longToastOnUi
+import io.legado.app.utils.observeEvent
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
@@ -95,35 +96,15 @@ class BookInfoActivity :
             viewModel.getBook(false)?.let { book ->
                 lifecycleScope.launch {
                     withContext(IO) {
-                        if (book.isVideo) {
-                            VideoPlay.volumes.clear()
-                            appDb.bookChapterDao.getChapterList(book.bookUrl).forEach { chapter ->
-                                if (chapter.isVolume) {
-                                    VideoPlay.volumes.add(chapter)
-                                }
-                            }
-                            if (VideoPlay.volumes.isEmpty()) {
-                                VideoPlay.chapterInVolumeIndex = it.first
-                            } else {
-                                for ((index, volume) in VideoPlay.volumes.reversed().withIndex()) {
-                                    if (volume.index < it.first) {
-                                        book.chapterInVolumeIndex = it.first - volume.index - 1
-                                        book.durVolumeIndex = VideoPlay.volumes.size - index - 1
-                                        VideoPlay.durVolume = volume
-                                        break
-                                    } else if (volume.index == it.first) {
-                                        book.chapterInVolumeIndex = 0
-                                        book.durVolumeIndex = VideoPlay.volumes.size - index - 1
-                                        VideoPlay.durVolume = volume
-                                        break
-                                    }
-                                }
-                            }
-                        } else {
-                            book.durChapterIndex = it.first
-                        }
-                        book.durChapterPos = it.second
-                        chapterChanged = it.third
+                        val durChapterIndex = it[0] as Int
+                        val durChapterPos = it[1] as Int
+                        val durVolumeIndex = it[3] as Int
+                        val chapterInVolumeIndex = it[4] as Int
+                        book.durChapterIndex = durChapterIndex
+                        book.durChapterPos = durChapterPos
+                        chapterChanged = it[2] as Boolean
+                        book.durVolumeIndex = durVolumeIndex
+                        book.chapterInVolumeIndex = chapterInVolumeIndex
                         appDb.bookDao.update(book)
                     }
                     startReadActivity(book)
@@ -170,7 +151,9 @@ class BookInfoActivity :
             return@registerForActivityResult
         }
         book?.let { book ->
-            viewModel.bookSource = appDb.bookSourceDao.getBookSource(book.origin)
+            viewModel.bookSource = appDb.bookSourceDao.getBookSource(book.origin)?.also { source ->
+                viewModel.hasCustomBtn = source.customButton
+            }
             viewModel.refreshBook(book)
         }
     }
@@ -207,7 +190,9 @@ class BookInfoActivity :
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.book_info, menu)
         editMenuItem = menu.findItem(R.id.menu_edit)
-        menuCustomBtn = menu.findItem(R.id.menu_custom_btn)
+        menuCustomBtn = menu.findItem(R.id.menu_custom_btn).also {
+            it.isVisible = viewModel.hasCustomBtn
+        }
         return super.onCompatCreateOptionsMenu(menu)
     }
 
@@ -280,12 +265,16 @@ class BookInfoActivity :
             R.id.menu_top -> viewModel.topBook()
             R.id.menu_set_source_variable -> setSourceVariable()
             R.id.menu_set_book_variable -> setBookVariable()
-            R.id.menu_copy_book_url -> viewModel.getBook()?.bookUrl?.let {
-                sendToClip(it)
+            R.id.menu_copy_book_url -> viewModel.getBook()?.let {
+                SourceCallBack.callBackBtn(this, SourceCallBack.CLICK_COPY_BOOK_URL, viewModel.bookSource, it, null) {
+                    sendToClip(it.bookUrl)
+                }
             }
 
-            R.id.menu_copy_toc_url -> viewModel.getBook()?.tocUrl?.let {
-                sendToClip(it)
+            R.id.menu_copy_toc_url -> viewModel.getBook()?.let {
+                SourceCallBack.callBackBtn(this, SourceCallBack.CLICK_COPY_TOC_URL, viewModel.bookSource, it, null) {
+                    sendToClip(it.tocUrl)
+                }
             }
 
             R.id.menu_can_update -> {
@@ -336,6 +325,10 @@ class BookInfoActivity :
                     title = getString(R.string.select_book_folder)
                 }
             }
+        }
+
+        observeEvent<Boolean>(EventBus.REFRESH_BOOK_INFO) { //书源js函数触发刷新
+            refreshBook()
         }
     }
 

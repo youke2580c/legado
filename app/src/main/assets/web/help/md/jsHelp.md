@@ -37,7 +37,7 @@
 
 ## 当前类对象的可使用的部分方法
 
-### [RssJsExtensions](https://github.com/Luoyacheng/legado/blob/main/app/src/main/java/io/legado/app/ui/rss/read/RssJsExtensions.kt)
+### [RssJsExtensions](https://github.com/Luoyacheng/legado/blob/main/app/src/main/java/io/legado/app/ui/rss/read/RssJsExtensions.kt)独有函数
 > 在订阅源`shouldOverrideUrlLoading`规则或`登录界面`中使用  
 > 订阅添加跳转url拦截, js, 返回true拦截,js变量url,可以通过js打开url  
 > url跳转拦截规则不能执行耗时操作
@@ -68,11 +68,15 @@ java.open(name: String, url: String?, title: String?)
 java.open(name: String, url: String?, title: String?, origin: String?)
 ```
 
-### [SourceLoginJsExtensions](https://github.com/Luoyacheng/legado/blob/main/app/src/main/java/io/legado/app/ui/login/SourceLoginJsExtensions.kt)
-> 只在登录界面按钮被触发时或按钮的回调事件中有效  
+### [SourceLoginJsExtensions](https://github.com/Luoyacheng/legado/blob/main/app/src/main/java/io/legado/app/ui/login/SourceLoginJsExtensions.kt)独有函数
+> 只在`登录界面按钮`被触发时或`按钮的回调`事件中有效  
 ```js
-java.copyText(text: String) //复制文本到剪贴板
-java.upLoginData(data: Map<String, String>) //实时更新登录界面信息，参数是键值对对象对象，例如{"telephone":"123"}
+//复制文本到剪贴板
+java.copyText(text: String)
+//实时更新登录界面用户信息，upLoginData(null)会全部重置为默认值
+java.upLoginData(data: Map<String, String?>?)
+//刷新书籍详情页
+java.refreshBookInfo()
 ```
 
 ### [AnalyzeUrl](https://github.com/gedoor/legado/blob/master/app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeUrl.kt) 部分函数
@@ -158,14 +162,18 @@ java.head(url: String, headerMap: Map<String, String>, timeout: Int?): Connectio
 * @param html 直接用webView载入的html, 如果html为空直接访问url
 * @param url html内如果有相对路径的资源不传入url访问不了
 * @param js 用来取返回值的js语句, 没有就返回整个源代码
+* @param cacheFirst 优先使用缓存,为true能提高访问速度
 * @return 返回js获取的内容
 java.webView(html: String?, url: String?, js: String?): String?
+java.webView(html: String?, url: String?, js: String?, cacheFirst: Boolean): String?
 
 * 使用webView获取跳转url
 java.webViewGetOverrideUrl(html: String?, url: String?, js: String?, overrideUrlRegex: String): String?
+java.webViewGetOverrideUrl(html: String?, url: String?, js: String?, overrideUrlRegex: String, cacheFirst: Boolean): String?
 
 * 使用webView获取资源url
 java.webViewGetSource(html: String?, url: String?, js: String?, sourceRegex: String): String?
+java.webViewGetOverrideUrl(html: String?, url: String?, js: String?, overrideUrlRegex: String, cacheFirst: Boolean): String?
 
 * 使用内置浏览器打开链接，可用于获取验证码 手动验证网站防爬
 * @param url 要打开的链接
@@ -474,7 +482,8 @@ login函数获取登录信息键值
 source.getLoginInfoMap().get(key: String)
 清除登录信息
 source.removeLoginInfo()
-login函数存放登录信息，在登录界面时请调用java.upLoginData
+login函数存放登录信息，  
+在登录界面时请调用java.upLoginData
 source.putLoginInfo()
 ```
 * 书源缓存刷新

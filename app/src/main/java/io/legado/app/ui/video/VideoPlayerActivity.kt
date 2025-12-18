@@ -66,39 +66,28 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     private var isFullScreen = false
     private var isPortraitVideo = false
     private var orientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    private var menuCustomBtn: MenuItem? = null
     private val bookSourceEditResult =
         registerForActivityResult(StartActivityContract(BookSourceEditActivity::class.java)) {
             if (it.resultCode == RESULT_OK) {
-                VideoPlay.upSource()
+                viewModel.upSource {
+                    menuCustomBtn?.isVisible = (VideoPlay.source as? BookSource)?.customButton == true
+                }
             }
         }
     private val rssSourceEditResult =
         registerForActivityResult(StartActivityContract(RssSourceEditActivity::class.java)) {
             if (it.resultCode == RESULT_OK) {
-                VideoPlay.upSource()
+                viewModel.upSource()
             }
         }
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) {
         it?.let {
-            if (it.third) {
-                if (VideoPlay.volumes.isEmpty()) {
-                    VideoPlay.chapterInVolumeIndex = it.first
-                } else {
-                    for ((index, volume) in VideoPlay.volumes.reversed().withIndex()) {
-                        if (volume.index < it.first) {
-                            VideoPlay.chapterInVolumeIndex = it.first - volume.index - 1
-                            VideoPlay.durVolumeIndex = VideoPlay.volumes.size - index - 1
-                            VideoPlay.durVolume = volume
-                            break
-                        } else if (volume.index == it.first) {
-                            VideoPlay.chapterInVolumeIndex = 0
-                            VideoPlay.durVolumeIndex = VideoPlay.volumes.size - index - 1
-                            VideoPlay.durVolume = volume
-                            break
-                        }
-                    }
-                }
-                VideoPlay.durChapterPos = it.second
+            if (it[2] as Boolean) {
+                VideoPlay.chapterInVolumeIndex = it[0] as Int
+                VideoPlay.durChapterPos = it[1] as Int
+                VideoPlay.durVolumeIndex = it[3] as Int
+                VideoPlay.chapterInVolumeIndex = it[4] as Int
                 VideoPlay.upEpisodes()
                 VideoPlay.saveRead()
                 if (VideoPlay.episodes.isNullOrEmpty()) {
@@ -338,6 +327,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         playerView.fullscreenButton.setOnClickListener { toggleFullScreen() }
         playerView.setBackFromFullScreenListener { toggleFullScreen() }
         playerView.setVideoAllCallBack(object : GSYSampleCallBack() {
+            @SuppressLint("SourceLockedOrientationActivity")
             override fun onPrepared(url: String?, vararg objects: Any?) {
                 super.onPrepared(url, *objects)
                 playerView.post {
@@ -383,6 +373,9 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     }
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        menuCustomBtn = menu.findItem(R.id.menu_custom_btn)?.also {
+            it.isVisible = (VideoPlay.source as? BookSource)?.customButton == true
+        }
         starMenuItem = menu.findItem(R.id.menu_rss_star)
         upStarMenu()
         return super.onPrepareOptionsMenu(menu)
@@ -411,21 +404,30 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
+            R.id.menu_custom_btn -> {
+                (VideoPlay.source as? BookSource)?.let {source ->
+                    VideoPlay.book?.let { book ->
+                        SourceCallBack.callBackBtn(this, SourceCallBack.CLICK_CUSTOM_BUTTON, source, book, VideoPlay.chapter)
+                    }
+                }
+            }
             R.id.menu_rss_star -> viewModel.addFavorite {
                 VideoPlay.rssStar?.let { showDialogFragment(RssFavoritesDialog(it)) }
             }
             R.id.menu_float_window -> startFloatingWindow()
             R.id.menu_config_settings -> showDialogFragment(SettingsDialog(this))
             R.id.menu_login -> VideoPlay.source?.let {s ->
-                val type = when (s) {
-                    is BookSource -> "bookSource"
-                    is RssSource -> "rssSource"
-                    else -> null
-                }
-                type?.let { it ->
-                    startActivity<SourceLoginActivity> {
-                        putExtra("type", it)
-                        putExtra("key", s.getKey())
+               when (s) {
+                    is BookSource -> {
+                        startActivity<SourceLoginActivity> {
+                            putExtra("bookType", BookType.video)
+                        }
+                    }
+                    is RssSource -> {
+                        startActivity<SourceLoginActivity> {
+                            putExtra("type", "rssSource")
+                            putExtra("key", s.getKey())
+                        }
                     }
                 }
             }
@@ -436,7 +438,11 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                     this.toastOnUi("暂无播放地址")
                     return true
                 }
-                sendToClip(url)
+                VideoPlay.book?.let {
+                    SourceCallBack.callBackBtn(this, SourceCallBack.CLICK_COPY_PLAY_URL, VideoPlay.source as? BookSource, it, VideoPlay.chapter) {
+                        sendToClip(url)
+                    }
+                }
             }
             R.id.menu_open_other_video_player -> {
                 val url = VideoPlay.videoUrl

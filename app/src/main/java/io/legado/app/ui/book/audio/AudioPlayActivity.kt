@@ -88,10 +88,10 @@ class AudioPlayActivity :
     }
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) {
         it?.let {
-            if (it.first != AudioPlay.book?.durChapterIndex
-                || it.second == 0
+            if (it[0] != AudioPlay.book?.durChapterIndex
+                || it[1] == 0
             ) {
-                AudioPlay.skipTo(it.first)
+                AudioPlay.skipTo(it[0] as Int)
             }
         }
     }
@@ -115,13 +115,16 @@ class AudioPlayActivity :
         }
         viewModel.customBtnListData.observe(this) { menuCustomBtn?.isVisible = it }
         viewModel.initData(intent) {
-            initView()
+            initListener()
         }
+        initView()
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.audio_play, menu)
-        menuCustomBtn = menu.findItem(R.id.menu_custom_btn)
+        menuCustomBtn = menu.findItem(R.id.menu_custom_btn)?.also {
+            it.isVisible = viewModel.customBtnListData.value == true
+        }
         return super.onCompatCreateOptionsMenu(menu)
     }
 
@@ -134,9 +137,9 @@ class AudioPlayActivity :
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_custom_btn -> {
-                AudioPlay.bookSource?.customButton?.let {
+                AudioPlay.bookSource?.let {source ->
                     AudioPlay.book?.let { book ->
-                        SourceCallBack.callBackBtn(this,SourceCallBack.CLICK_CUSTOM_BUTTON, AudioPlay.bookSource, book, AudioPlay.durChapter)
+                        SourceCallBack.callBackBtn(this,SourceCallBack.CLICK_CUSTOM_BUTTON, source, book, AudioPlay.durChapter)
                     }
                 }
             }
@@ -146,14 +149,18 @@ class AudioPlayActivity :
 
             R.id.menu_login -> AudioPlay.bookSource?.let {
                 startActivity<SourceLoginActivity> {
-                    putExtra("type", "bookSource")
-                    putExtra("key", it.bookSourceUrl)
-                    putExtra("bookUrl", AudioPlay.book?.bookUrl)
+                    putExtra("bookType", BookType.audio)
                 }
             }
 
             R.id.menu_wake_lock -> AppConfig.audioPlayUseWakeLock = !AppConfig.audioPlayUseWakeLock
-            R.id.menu_copy_audio_url -> sendToClip(AudioPlayService.url)
+            R.id.menu_copy_audio_url -> {
+                AudioPlay.book?.let {
+                    SourceCallBack.callBackBtn(this, SourceCallBack.CLICK_COPY_PLAY_URL, AudioPlay.bookSource, it, AudioPlay.durChapter) {
+                        sendToClip(AudioPlayService.url)
+                    }
+                }
+            }
             R.id.menu_edit_source -> AudioPlay.bookSource?.let {
                 sourceEditResult.launch {
                     putExtra("sourceUrl", it.bookSourceUrl)
@@ -171,26 +178,9 @@ class AudioPlayActivity :
     }
 
     private fun initView() {
-        binding.ivPlayMode.setOnClickListener {
-            AudioPlay.changePlayMode()
-        }
-
         observeEventSticky<AudioPlay.PlayMode>(EventBus.PLAY_MODE_CHANGED) {
             playMode = it
             updatePlayModeIcon()
-        }
-
-        binding.fabPlayStop.setOnClickListener {
-            playButton()
-        }
-        binding.fabPlayStop.onLongClick {
-            AudioPlay.stop()
-        }
-        binding.ivSkipNext.setOnClickListener {
-            AudioPlay.next()
-        }
-        binding.ivSkipPrevious.setOnClickListener {
-            AudioPlay.prev()
         }
         binding.playerProgress.setOnSeekBarChangeListener(object : SeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
@@ -206,12 +196,6 @@ class AudioPlayActivity :
                 AudioPlay.adjustProgress(seekBar.progress)
             }
         })
-        binding.ivChapter.setOnClickListener {
-            AudioPlay.book?.let {
-                tocActivityResult.launch(it.bookUrl)
-            }
-        }
-
         /* 低于安卓6不显示调速按钮 */
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             binding.ivSpeedControl.invisible()
@@ -225,6 +209,29 @@ class AudioPlayActivity :
             timerSliderPopup.showAsDropDown(it, 0, (-100).dpToPx(), Gravity.TOP)
         }
         binding.llPlayMenu.applyNavigationBarPadding()
+    }
+
+    private fun initListener() {
+        binding.ivPlayMode.setOnClickListener {
+            AudioPlay.changePlayMode()
+        }
+        binding.fabPlayStop.setOnClickListener {
+            playButton()
+        }
+        binding.fabPlayStop.onLongClick {
+            AudioPlay.stop()
+        }
+        binding.ivSkipNext.setOnClickListener {
+            AudioPlay.next()
+        }
+        binding.ivSkipPrevious.setOnClickListener {
+            AudioPlay.prev()
+        }
+        binding.ivChapter.setOnClickListener {
+            AudioPlay.book?.let {
+                tocActivityResult.launch(it.bookUrl)
+            }
+        }
     }
 
     private fun updatePlayModeIcon() {
