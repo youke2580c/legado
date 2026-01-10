@@ -297,6 +297,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val autoRefreshBook: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.autoRefresh)
 
+    val onlyUpdateRead: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.onlyUpdateRead)
+
     var enableReview: Boolean
         get() = BuildConfig.DEBUG && appCtx.getPrefBoolean(PreferKey.enableReview, false)
         set(value) {
@@ -700,6 +703,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.disableMangaScale, value)
         }
 
+    var disableMangaPageAnim: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.disableMangaPageAnim, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.disableMangaPageAnim, value)
+        }
+
     //漫画预加载数量
     var mangaPreDownloadNum
         get() = appCtx.getPrefInt(PreferKey.mangaPreDownloadNum, 10)
@@ -761,10 +770,10 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefInt(PreferKey.mangaEInkThreshold, value)
         }
 
-    var disableHorizontalAnimator
-        get() = appCtx.getPrefBoolean(PreferKey.disableHorizontalAnimator, false)
+    var disableHorizontalPageSnap
+        get() = appCtx.getPrefBoolean(PreferKey.disableHorizontalPageSnap, false)
         set(value) {
-            appCtx.putPrefBoolean(PreferKey.disableHorizontalAnimator, value)
+            appCtx.putPrefBoolean(PreferKey.disableHorizontalPageSnap, value)
         }
 
     var enableMangaGray

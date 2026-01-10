@@ -46,6 +46,7 @@ import io.legado.app.ui.rss.source.edit.RssSourceEditActivity
 import io.legado.app.ui.video.config.SettingsDialog
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.gone
+import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeEventSticky
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setTintMutate
@@ -64,7 +65,6 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     private var starMenuItem: MenuItem? = null
     private var isNew = true
     private var isFullScreen = false
-    private var isPortraitVideo = false
     private var orientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     private var menuCustomBtn: MenuItem? = null
     private val bookSourceEditResult =
@@ -180,7 +180,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     }
 
     private fun showCover(book: Book) {
-        binding.ivCover.load(book.getDisplayCover(), book, false, book.origin)
+        binding.ivCover.load(book, false)
     }
 
     private fun showToc(toc: List<BookChapter>) {
@@ -197,7 +197,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                 VideoPlay.chapterInVolumeIndex = index
                 VideoPlay.durChapterPos = 0
                 VideoPlay.saveRead()
-                upView()
+                upEpisodesView()
                 VideoPlay.startPlay(playerView)
             }
         }
@@ -223,7 +223,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                     adapter?.updateData(VideoPlay.episodes)
                 }
                 VideoPlay.saveRead()
-                upView()
+                upVolumesView()
                 VideoPlay.startPlay(playerView)
             }
         }
@@ -249,9 +249,17 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     }
 
     private fun upView() {
+        upEpisodesView()
+        upVolumesView()
+    }
+
+    private fun upEpisodesView() {
         if (!VideoPlay.episodes.isNullOrEmpty()) {
             scrollToDurChapter(binding.chapters, VideoPlay.chapterInVolumeIndex)
         }
+    }
+
+    private fun upVolumesView() {
         if (!VideoPlay.volumes.isEmpty()) {
             scrollToDurChapter(binding.volumes, VideoPlay.durVolumeIndex)
         }
@@ -262,7 +270,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         toggleSystemBar(!isFullScreen)
         if (isFullScreen) {
             orientation = requestedOrientation
-            requestedOrientation = if (isPortraitVideo) {
+            requestedOrientation = if (VideoPlay.isPortraitVideo) {
                 ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT //竖屏
             } else {
                 ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE //横屏
@@ -280,7 +288,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             }
             playerView.postDelayed({
                 playerView.backFromFull(this)
-            }, if (isPortraitVideo) 300 else 0)
+            }, if (VideoPlay.isPortraitVideo) 300 else 0)
             upView()
         }
     }
@@ -298,12 +306,12 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             window.addFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
             when (newConfig.orientation) {
                 Configuration.ORIENTATION_LANDSCAPE -> {
-                    if (!isPortraitVideo) {
+                    if (!VideoPlay.isPortraitVideo) {
                         toggleFullScreen()
                     }
                 }
                 Configuration.ORIENTATION_PORTRAIT -> {
-                    if (isPortraitVideo) {
+                    if (VideoPlay.isPortraitVideo) {
                         toggleFullScreen()
                     }
                 }
@@ -331,6 +339,10 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             override fun onPrepared(url: String?, vararg objects: Any?) {
                 super.onPrepared(url, *objects)
                 playerView.post {
+                    val player = playerView.getCurrentPlayer()
+                    if (VideoPlay.lockCurScreen &&  !player.getLockCurScreen()) {
+                        player.lockTouchLogic()
+                    }
                     //根据实际视频比例再次调整
                     val videoWidth = playerView.currentVideoWidth
                     val videoHeight = playerView.currentVideoHeight
@@ -338,7 +350,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                         val layoutParams = playerView.layoutParams
                         val parentWidth = playerView.width
                         val aspectRatio = videoHeight.toFloat() / videoWidth.toFloat()
-                        isPortraitVideo = if (aspectRatio > 1.2) true else false
+                        val isPortraitVideo = if (aspectRatio > 1.2) true else false
+                        VideoPlay.isPortraitVideo = isPortraitVideo
                         if (isFullScreen && isPortraitVideo) {
                             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT //提前进入了全屏，并且默认横屏了，纠正回来
                             return@post
@@ -354,14 +367,6 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                         layoutParams.height = if (height < screenHeight / 2) height else screenHeight / 2
                         playerView.layoutParams = layoutParams
                     }
-                }
-            }
-            override fun onAutoComplete(url: String?, vararg objects: Any?) {
-                super.onAutoComplete(url, *objects)
-                if (VideoPlay.upDurIndex(1)) {
-                    VideoPlay.saveRead()
-                    upView()
-                    VideoPlay.startPlay(playerView)
                 }
             }
         })
@@ -483,17 +488,27 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     }
 
     override fun onDestroy() {
+        super.onDestroy()
         VideoPlay.durChapterPos = playerView.getCurrentPositionWhenPlaying().toInt()
         VideoPlay.saveRead()
         playerView.getCurrentPlayer().release()
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        super.onDestroy()
     }
 
     override fun observeLiveBus() {
+
         observeEventSticky<String>(EventBus.VIDEO_SUB_TITLE) {
             binding.titleBar.title = it
         }
+
+        observeEvent<ArrayList<Int>>(EventBus.UP_VIDEO_INFO) {
+            it.forEach { value ->
+                when (value) {
+                    1 -> upEpisodesView()
+                }
+            }
+        }
+
     }
 
     override fun finish() {

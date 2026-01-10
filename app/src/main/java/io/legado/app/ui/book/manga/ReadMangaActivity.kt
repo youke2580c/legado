@@ -542,7 +542,7 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             R.id.menu_enable_horizontal_scroll -> {
                 item.isChecked = !item.isChecked
                 AppConfig.enableMangaHorizontalScroll = item.isChecked
-                mMenu?.findItem(R.id.menu_disable_horizontal_animation)?.isVisible = item.isChecked
+                mMenu?.findItem(R.id.menu_disable_horizontal_page_snap)?.isVisible = item.isChecked
                 setHorizontalScroll(item.isChecked)
                 mAdapter.notifyDataSetChanged()
             }
@@ -586,13 +586,26 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
                 showDialogFragment(MangaEpaperDialog())
             }
 
-            R.id.menu_disable_horizontal_animation -> {
+            R.id.menu_disable_horizontal_page_snap -> {
                 item.isChecked = !item.isChecked
-                AppConfig.disableHorizontalAnimator = item.isChecked
+                AppConfig.disableHorizontalPageSnap = item.isChecked
                 if (item.isChecked) {
                     mPagerSnapHelper.attachToRecyclerView(null)
                 } else {
                     mPagerSnapHelper.attachToRecyclerView(binding.recyclerView)
+                }
+            }
+
+            R.id.menu_disable_manga_page_anim -> {
+                item.isChecked = !item.isChecked
+                mMenu?.findItem(R.id.menu_disable_horizontal_page_snap)?.isVisible = !item.isChecked
+                AppConfig.disableMangaPageAnim = item.isChecked
+                if (item.isChecked) {
+                    mPagerSnapHelper.attachToRecyclerView(null)
+                } else {
+                    if (AppConfig.enableMangaHorizontalScroll && !AppConfig.disableHorizontalPageSnap) {
+                        mPagerSnapHelper.attachToRecyclerView(binding.recyclerView)
+                    }
                 }
             }
 
@@ -659,7 +672,7 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
         mAdapter.isHorizontal = enable
         if (enable) {
             if (!enableAutoScroll) {
-                if (AppConfig.disableHorizontalAnimator) {
+                if (AppConfig.disableHorizontalPageSnap || AppConfig.disableMangaPageAnim) {
                     mPagerSnapHelper.attachToRecyclerView(null)
                 } else {
                     mPagerSnapHelper.attachToRecyclerView(binding.recyclerView)
@@ -685,11 +698,11 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             AppConfig.enableMangaHorizontalScroll
         menu.findItem(R.id.menu_epaper_manga).isChecked = AppConfig.enableMangaEInk
         menu.findItem(R.id.menu_epaper_manga_setting).isVisible = AppConfig.enableMangaEInk
-        menu.findItem(R.id.menu_disable_horizontal_animation).run {
-            isVisible =
-                AppConfig.enableMangaHorizontalScroll
-            isChecked = AppConfig.disableHorizontalAnimator
+        menu.findItem(R.id.menu_disable_horizontal_page_snap).run {
+            isVisible = AppConfig.enableMangaHorizontalScroll && !AppConfig.disableMangaPageAnim
+            isChecked = AppConfig.disableHorizontalPageSnap || AppConfig.disableMangaPageAnim
         }
+        menu.findItem(R.id.menu_disable_manga_page_anim).isChecked = AppConfig.disableMangaPageAnim
         menu.findItem(R.id.menu_gray_manga).isChecked = AppConfig.enableMangaGray
     }
 
@@ -739,7 +752,11 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
         }
         dx *= direction
         dy *= direction
-        binding.recyclerView.smoothScrollBy(dx, dy)
+        if (AppConfig.disableMangaPageAnim) {
+            binding.recyclerView.scrollBy(dx, dy)
+        } else {
+            binding.recyclerView.smoothScrollBy(dx, dy)
+        }
     }
 
     private fun showNumberPickerDialog(

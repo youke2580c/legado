@@ -4,6 +4,7 @@ import android.graphics.Canvas
 import android.os.Build
 import android.text.TextPaint
 import androidx.annotation.Keep
+import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.ui.book.read.page.ContentTextView
 import io.legado.app.ui.book.read.page.entities.TextLine
@@ -24,6 +25,12 @@ data class TextHtmlColumn(
 ) : TextBaseColumn {
 
     override var textLine: TextLine = emptyTextLine
+
+    private val textPaint: TextPaint by lazy {
+        TextPaint(ChapterProvider.contentPaint).apply {
+            textSize = mTextSize
+        }
+    }
 
     override var selected: Boolean = false
         set(value) {
@@ -49,21 +56,20 @@ data class TextHtmlColumn(
     override fun draw(view: ContentTextView, canvas: Canvas) {
         val y = textLine.lineBase - textLine.lineTop
         if (linkUrl != null) {
-            val textPaint = TextPaint(ChapterProvider.contentPaint).apply {
-                textSize = mTextSize
-                color = ThemeStore.accentColor
+            textPaint.run {
+                color = ReadBookConfig.textAccentColor
                 isUnderlineText = true
             }
             drawText(view, canvas, y, textPaint)
             return
         }
-        val textPaint = TextPaint(ChapterProvider.contentPaint).apply {
-            textSize = mTextSize
+        textPaint.run {
             color = if (textLine.isReadAloud || isSearchResult) {
-                ThemeStore.accentColor
+                ReadBookConfig.textAccentColor
             } else {
                 mTextColor
             }
+            isUnderlineText = false
         }
         drawText(view, canvas, y, textPaint)
     }

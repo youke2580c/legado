@@ -372,8 +372,10 @@ class VideoPlayService : BaseService() {
                 val screenWidth = resources.displayMetrics.widthPixels
                 if (videoWidth > 0 && videoHeight > 0) {
                     val parentWidth = if (videoHeight > videoWidth * 1.2) {
+                        VideoPlay.isPortraitVideo = true
                         screenWidth / 2 //竖屏时为屏幕的1/2
                     } else {
+                        VideoPlay.isPortraitVideo = false
                         params.width
                     }
                     val aspectRatio = videoHeight.toFloat() / videoWidth.toFloat()
@@ -384,10 +386,7 @@ class VideoPlayService : BaseService() {
             }
             override fun onAutoComplete(url: String?, vararg objects: Any?) {
                 super.onAutoComplete(url, *objects)
-                if (VideoPlay.upDurIndex(1)) {
-                    VideoPlay.saveRead()
-                    VideoPlay.startPlay(playerView)
-                } else {
+                if (!VideoPlay.upDurIndex(1, playerView)) {
                     stopSelf()
                 }
             }

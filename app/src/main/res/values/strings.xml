@@ -210,6 +210,7 @@
     <string name="click_turn_page">Tap screen to turn page</string>
     <string name="page_anim">Flip animation</string>
     <string name="book_page_anim">Flip animation (book)</string>
+    <string name="disable_manga_page_anim">Disable flip animation</string>
     <string name="keep_light">Keep screen awake</string>
     <string name="back">Back</string>
     <string name="menu">Menu</string>
@@ -583,6 +584,7 @@
     <string name="bg_image">Background images</string>
     <string name="bg_color">Background color</string>
     <string name="text_color">Text color</string>
+    <string name="text_accent_color">强调颜色</string>
     <string name="select_image">Select a picture</string>
     <string name="group_manage">Group management</string>
     <string name="group_select">Group selection</string>
@@ -1118,6 +1120,8 @@
     <string name="file_manage_summary">Managing files in the application\'s private folder</string>
     <string name="create_folder">Create Folder</string>
     <string name="allow_drop_down_refresh">Allow drop-down refresh</string>
+    <string name="only_update_read">仅更新已读完</string>
+    <string name="ps_only_update_read">自动刷新时，只更新已读完的书籍</string>
     <string name="text_underline">Text underline</string>
     <string name="select_new_source">Select new source</string>
     <string name="select_update_source">Select update source</string>
@@ -1192,7 +1196,7 @@
     <string name="read_aloud_read_phone_state_permission_rationale">阅读需要读取手机状态实现来电期间暂停朗读功能</string>
     <string name="read_aloud_by_media_button_title">耳机按键启动朗读</string>
     <string name="read_aloud_by_media_button_summary">通过耳机按键来启动朗读</string>
-    <string name="show_same_source">显示重复书源</string>
+    <string name="group_sources_by_domain">按域名分组显示</string>
     <string name="theme_config">主题配置</string>
     <string name="show_manga_ui">漫画浏览</string>
     <string name="disable_manga_scale">禁用漫画缩放</string>
@@ -1229,7 +1233,7 @@
     <string name="manga_epaper">墨水屏</string>
     <string name="manga_epaper_stting">墨水屏设置</string>
     <string name="manga_epaper_value">阈值</string>
-    <string name="disable_horizontal_animation">禁用水平滚动动画</string>
+    <string name="disable_horizontal_page_snap">禁用水平翻页效果</string>
     <string name="enable_manga_gray">开启图片灰色</string>
     <string name="play_mode">播放模式</string>
     <string name="speed_control">语速控制</string>
@@ -1285,8 +1289,8 @@
     <string name="rule_call_back">回调操作（callBackJs）</string>
     <string name="time_hour">小时</string>
     <string name="custom_button">定制按钮</string>
-    <string name="close_welcome">关闭欢迎页</string>
-    <string name="close_welcome_summary">启用后进入app不再展示欢迎页</string>
+    <string name="welcome_show_time">欢迎页显示时间</string>
+    <string name="welcome_show_time_summary">设为0不显示欢迎页</string>
     <string name="domain">域名</string>
     <string name="write_source_comment">写入源注释</string>
     <string name="auto_play">自动播放</string>
@@ -1297,6 +1301,9 @@
     <string name="app_name_sigma">阅读Sigma</string>
     <string name="about_description_sigma">\u3000\u3000阅读Sigma继承自legado，旨在原版基础上完善和增加功能，欢迎您的加入。</string>
     <string name="contributors_summary_sigma">gedoor、Luoyacheng、Horis和 Xwite 等，详情请在 GitHub 中查看</string>
+    <string name="app_share_description_sigma">
+        阅读 Sigma 下载地址：\nhttps://github.com/Luoyacheng/legado/releases
+    </string>
     <string name="sure_cache_book">是否确认开始缓存？</string>
     <string name="non_printable_set">不可视字符设定</string>
     <string name="whitespace_leading">行首</string>
@@ -1305,7 +1312,8 @@
     <string name="whitespace_empty">空行</string>
     <string name="line_separator">换行</string>
     <string name="whitespace_selection">选中</string>
-    <string name="press_speed">长按倍速 %.1f</string>
+    <string name="press_speed">长按倍速</string>
+    <string name="press_speed_summary">长按倍速 %.1f</string>
     <string name="full_bottom_progress">全屏时显示底部进度条</string>
     <string name="json_format">json格式</string>
     <string name="open_other_video_player">其它播放器打开</string>
@@ -1321,4 +1329,13 @@
     <string name="cache_first">优先加载缓存</string>
     <string name="rule_sub_content">副文规则（subContent）</string>
     <string name="system_auto">跟随系统</string>
+    <string name="sys_image_picker">系统图片选择器</string>
+    <string name="immersion_nav_bar">沉浸式操作栏</string>
+    <string name="day_nav_bar_immersion">白天操作栏颜色透明</string>
+    <string name="night_nav_bar_immersion">夜间操作栏颜色透明</string>
+    <string name="manual_input_img_src">手动输入图片链接</string>
+    <string name="enter_img_src_path">请输入图片链接</string>
+    <string name="empty_img_src_input">图片链接不能为空</string>
+    <string name="invalid_file_path">文件路径无效</string>
+    <string name="is_system_tts_no_export">无法导出系统tts</string>
 </resources>

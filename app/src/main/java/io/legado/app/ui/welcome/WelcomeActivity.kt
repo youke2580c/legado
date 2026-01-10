@@ -18,6 +18,7 @@ import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.fullScreen
 import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.setStatusBarColorAuto
 import io.legado.app.utils.startActivity
@@ -34,10 +35,11 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
             // 避免从桌面启动程序后，会重新实例化入口类的activity
             finish()
         } else {
-            if (getPrefBoolean(PreferKey.closeWelcome)) {
+            val welcomeShowTime = getPrefInt(PreferKey.welcomeShowTime, 500)
+            if (welcomeShowTime == 0) {
                 startMainActivity()
             } else {
-                binding.root.postDelayed(500) { startMainActivity() }
+                binding.root.postDelayed(welcomeShowTime.toLong()) { startMainActivity() }
             }
         }
         binding.ivBook.setColorFilter(accentColor)
@@ -56,9 +58,15 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
                 when (ThemeConfig.getTheme()) {
                     Theme.Dark -> {
                         getPrefString(PreferKey.welcomeImageDark)?.let { path ->
-                            val size = windowManager.windowSize
-                            BitmapUtils.decodeBitmap(path, size.widthPixels, size.heightPixels)?.let {
-                                window.decorView.background = it.toDrawable(resources)
+                            if (path.endsWith(".9.png")) {
+                                BitmapUtils.decodeNinePatchDrawable(path)?.let {
+                                    window.decorView.background = it
+                                }
+                            } else {
+                                val size = windowManager.windowSize
+                                BitmapUtils.decodeBitmap(path, size.widthPixels, size.heightPixels)?.let {
+                                    window.decorView.background = it.toDrawable(resources)
+                                }
                             }
                         }
                         binding.tvLegado.visible(AppConfig.welcomeShowTextDark)
@@ -68,9 +76,15 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
                     }
                     else -> {
                         getPrefString(PreferKey.welcomeImage)?.let { path ->
-                            val size = windowManager.windowSize
-                            BitmapUtils.decodeBitmap(path, size.widthPixels, size.heightPixels)?.let {
-                                window.decorView.background = it.toDrawable(resources)
+                            if (path.endsWith(".9.png")) {
+                                BitmapUtils.decodeNinePatchDrawable(path)?.let {
+                                    window.decorView.background = it
+                                }
+                            } else {
+                                val size = windowManager.windowSize
+                                BitmapUtils.decodeBitmap(path, size.widthPixels, size.heightPixels)?.let {
+                                    window.decorView.background = it.toDrawable(resources)
+                                }
                             }
                         }
                         binding.tvLegado.visible(AppConfig.welcomeShowText)
