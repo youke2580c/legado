@@ -1,8 +1,8 @@
 # 源规则帮助
 
-* [阅读3.0(Legado)规则说明](https://mgz0227.github.io/The-tutorial-of-Legado/)
-* [书源帮助文档](https://mgz0227.github.io/The-tutorial-of-Legado/Rule/source.html)
-* [订阅源帮助文档](https://mgz0227.github.io/The-tutorial-of-Legado/Rule/rss.html)
+* [阅读3.0(Legado)规则说明](https://mgz0227.github.io/The-tutorial-of-Legado/)　
+* [书源帮助文档](https://mgz0227.github.io/The-tutorial-of-Legado/Rule/source.html)　
+* [订阅源帮助文档](https://mgz0227.github.io/The-tutorial-of-Legado/Rule/rss.html)　
 * 辅助键盘❓中可插入URL参数模板,打开帮助,js教程,正则教程,选择文件
 * 规则标志, {{......}}内使用规则必须有明显的规则标志,没有规则标志当作js执行
 ```
@@ -12,7 +12,7 @@
 : regex规则,不可省略,只可以用在书籍列表和目录列表
 ```
 * jsLib
-> 注入JavaScript到RhinoJs引擎中，支持两种格式，可实现[函数共用](https://github.com/gedoor/legado/wiki/JavaScript%E5%87%BD%E6%95%B0%E5%85%B1%E7%94%A8)
+> 注入JavaScript到RhinoJs引擎中，支持两种格式，可实现[函数共用](https://github.com/gedoor/legado/wiki/JavaScript%E5%87%BD%E6%95%B0%E5%85%B1%E7%94%A8)　
 
 > `JavaScript Code` 直接填写JavaScript片段  
 > `{"example":"https://www.example.com/js/example.js", ...}` 自动复用已经下载的js文件
@@ -45,6 +45,7 @@
 > 版本20221113重要更改：按钮支持调用`登录URL`规则里面的函数，必须实现`login`函数  
 > 版本20251224：文本输入类型支持`action`键，在用户完成输入后执行js函数，可用来判断用户输入内容，返回true会执行保存
 ```
+//所有按钮类型："text"、"password"、"button"、"toggle"、"select"
 规则填写示范
 [
     {
@@ -134,7 +135,21 @@ getResponse(): Response //返回访问结果,网络朗读引擎采用的是这�
 ```
 
 * 发现url格式
-```json
+> 对比登录ui，name换成了title，url用来打开发现页面，其余相同  
+> 额外的变量[infoMap](https://github.com/Luoyacheng/legado/blob/main/app/src/main/java/io/legado/app/utils/InfoMap.kt)可读取按钮的切换值
+```js
+//读取值
+var input = infoMap["关键词"];
+//修改值
+infoMap["关键词"]="系统";
+//替换infoMap
+infoMap.set({"键":"值"});
+//保存infoMap
+infoMap.save();
+```
+```
+//所有按钮类型："url"、"text"、"button"、"toggle"、"select"
+规则填写示范
 [
   {
     "title": "xxx",
@@ -146,6 +161,10 @@ getResponse(): Response //返回访问结果,网络朗读引擎采用的是这�
       "layout_flexBasisPercent": -1,
       "layout_wrapBefore": false
     }
+  },
+  {
+    "title": "关键词",
+    "type": "text"
   }
 ]
 ```
@@ -314,6 +333,7 @@ decodeImage(result, key)
 * 网页JS
 > `window.close()` 关闭浏览器界面  
 > `screen.orientation.lock()` 全屏后可控制屏幕方向  
+> lock参数"landscape"->横屏且受重力控制正反、"landscape-primary"->正向横屏、"landscape-secondary"->反向横屏  
 
 > 本地html中的额外支持的js函数  
 
@@ -324,15 +344,42 @@ window.run("java.toast('执行成功');'成功'")
 .catch(e=>alert("执行出错:"+e));
 ```
 
-* 书源控制正文图片
-> 图片链接中含有"js"键时，点击图片会执行一次键值的函数  
-> 加载图片时，执行结果作为图片链接  
+* 图片链接控制样式
+> 在书源正文  
+> 图片链接含有"click"键时，图片被点击就会执行  
+> 点击图片执行js键为兼容性保留,需要用户主动开启兼容设置，或者手动刷新图片  
+```js
+//建议使用
+var url = `https://www.baidu.com/img/flexible/logo/pc/result.png,{"click": "java.toast('这是'+book.name+'正文的图被点击了');"}`;
+result = `<img src = "${url}">`;
+```
+```js
+//不建议使用
+var url = `https://www.baidu.com/img/flexible/logo/pc/result.png,{"js": "if (book) java.toast('这是'+book.name+'正文的图被点击了');result", "style": "TEXT"}`;
+result = `<img src = "${url}">`;
+```
+
+> "width"键值控制图片宽度  
+> 键值为数字时为像素宽度，带`%`时为最大宽度百分比  
 
 > "style"键值控制单个图片的样式  
 > 目前支持"text"、"full"、"single"、"left"、"right"  
-> 大写"TEXT"时，占1.5个字符位  
+> 在书源正文样式为大写"TEXT"时，占1.5个字符位(text样式宽度与汉字保持一致，不受width控制)  
 
-```js
-var url = `https://www.baidu.com/img/flexible/logo/pc/result.png,{"js": "if (book) java.toast('这是'+book.name+'正文的图被点击了');result", "style": "right"}`;
-result = `<img src = "${url}">`;
 ```
+<img src = "https://du.com/result.png,{'style': 'center','width':'50%'}">
+<img src = "https://du.com/result.png,{'style': 'right','width':'300'}">
+<img src = "data:image/svg+xml;base64,QQ,{'style': 'left','width':'100%'}">
+```
+
+* 详情页html
+> 书籍详情页支持轻度显示html字符串样式（同字典规则）  
+> 获取到的简介字符串需要用`<usehtml></usehtml>`包裹起来才能识别  
+> 按钮文本需要含有@onclick:执行内容才能被识别  
+```xml
+<usehtml>
+<p style="text-align:end">右对齐文本</p>
+<button>点我@onclick:java.toast("Hello World")</button>
+</usehtml>
+```
+> 支持Markdown语法，需要用`<md></md>`包裹起来  

@@ -23,7 +23,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.globalExecutor
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.AudioPlayService
-import io.legado.app.ui.book.source.SourceCallBack
+import io.legado.app.model.SourceCallBack
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.startService
 import io.legado.app.utils.toastOnUi
@@ -31,6 +31,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancelChildren
 import splitties.init.appCtx
+import kotlin.text.trim
 
 @SuppressLint("StaticFieldLeak")
 @Suppress("unused")
@@ -187,6 +188,7 @@ object AudioPlay : CoroutineScope by MainScope() {
                 upLoading(true)
                 WebBook.getContent(this, bookSource, book, chapter)
                     .onSuccess { content ->
+                        val content = content.trim()
                         if (content.isEmpty()) {
                             appCtx.toastOnUi("未获取到资源链接")
                         } else {
@@ -433,7 +435,7 @@ object AudioPlay : CoroutineScope by MainScope() {
         Coroutine.async {
             durAudioSize = audioSize.toInt()
             chapter.end = audioSize
-            appDb.bookChapterDao.update(chapter)
+            chapter.update()
         }
     }
 

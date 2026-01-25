@@ -1,5 +1,5 @@
 # js变量和函数
-> 阅读使用[Rhino v1.8.0](https://github.com/mozilla/rhino) 作为JavaScript引擎以便于[调用Java类和方法](https://m.jb51.net/article/92138.htm)，查看[ECMAScript兼容性表格](https://mozilla.github.io/rhino/compat/engines.html)
+> 阅读使用[Rhino v1.8.0](https://github.com/mozilla/rhino) 作为JavaScript引擎以便于[调用Java类和方法](https://m.jb51.net/article/92138.htm)，查看[ECMAScript兼容性表格](https://mozilla.github.io/rhino/compat/engines.html)　
 
 > [Rhino运行时](https://github.com/mozilla/rhino/blob/master/rhino/src/main/java/org/mozilla/javascript/ScriptRuntime.java)懒加载导入的Java类和方法
 
@@ -13,7 +13,7 @@
 
 > 在书源规则中使用`@js` `<js>` `{{}}`可使用JavaScript调用阅读部分内置的类和方法
 
-> 注意为了安全，阅读会屏蔽部分java类调用，见[RhinoClassShutter](https://github.com/gedoor/legado/blob/master/modules/rhino/src/main/java/com/script/rhino/RhinoClassShutter.kt)
+> 注意为了安全，阅读会屏蔽部分java类调用，见[RhinoClassShutter](https://github.com/gedoor/legado/blob/master/modules/rhino/src/main/java/com/script/rhino/RhinoClassShutter.kt)　
 
 > 不同的书源规则中支持的调用的Java类和方法可能有所不同
 
@@ -58,30 +58,37 @@ java.addBook(bookUrl: String)
 
 * 打开源界面  
 ```js
-* @param name 为"sort"打开订阅源分类界面、为"rss"打开订阅源正文界面、为"explore"打开书源发现界面、"search"打开书籍搜索界面
-* @param url 为传递到界面的链接，"sort"时为分类链接、"rss"时为正文链接、"explore"时为发现链接、"search"时该参数无意义
+* @param name 为"sort"打开订阅源分类界面、为"rss"打开订阅源正文界面、为"explore"打开书源发现界面、"search"打开书籍搜索界面、"login"打开源登录界面
+* @param url 为传递到界面的链接，"sort"时为分类链接、"rss"时为正文链接、"explore"时为发现链接，"search"、"login"时该参数无意义
 //特别说明，"sort"时url可以传序列化后的键值对用来打开多个分类界面
-* @param title 为对应界面的标题，"search"时为搜索关键词
+* @param title 为对应界面的标题，"search"时为搜索关键词，"login"时该参数无意义
 * @param origin 打开指定源界面的源地址
-java.open(name: String, url: String)
-java.open(name: String, url: String?, title: String?)
-java.open(name: String, url: String?, title: String?, origin: String?)
+java.open(name: String, url: String? = null, title: String? = null, origin: String? = null)
 ```
 
 ### [SourceLoginJsExtensions](https://github.com/Luoyacheng/legado/blob/main/app/src/main/java/io/legado/app/ui/login/SourceLoginJsExtensions.kt)独有函数
-> 只在`登录界面按钮`被触发时或`按钮的回调`事件中有效  
+> 只在`登录界面按钮`被触发、`界面按钮的回调`事件、`发现按钮`函数、`图片链接click键`中有效
 ```js
+//用内置浏览器打开本地html
+* @param url 指定网页的基础URL，解决本地网页跨越问题
+* @param html 加载的内容
+* @param preloadJs 预注入js，用法同订阅源预注入js规则
+* @param config 界面配置，json字符串，
+java.showBrowser(url: String, html: String, preloadJs: String? = null, config: String? = null)
 //复制文本到剪贴板
 java.copyText(text: String)
 //实时更新登录界面用户信息，upLoginData(null)会全部重置为默认值
 java.upLoginData(data: Map<String, String?>?)
 //刷新登录界面
 java.reLoginView()
-//刷新书籍详情页，仅限详情页的登录界面
+//刷新书籍详情页
 java.refreshBookInfo()
 //清除tts源的缓存，仅限tts源的登录界面
 java.clearTtsCache()
+//刷新发现，仅限发现按钮
+java.refreshExplore()
 ```
+[showBrowser](https://github.com/Luoyacheng/legado/wiki/java.showBrowser%E5%87%BD%E6%95%B0%E4%BB%8B%E7%BB%8D)函数介绍
 
 ### [AnalyzeUrl](https://github.com/gedoor/legado/blob/master/app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeUrl.kt) 部分函数
 > js中通过java.调用,只在`登录检查JS`规则中有效
@@ -132,7 +139,7 @@ java.put(key, value)
 
 ### [js扩展类](https://github.com/gedoor/legado/blob/master/app/src/main/java/io/legado/app/help/JsExtensions.kt) 部分函数
 
-* 链接解析[JsURL](https://github.com/gedoor/legado/blob/master/app/src/main/java/io/legado/app/utils/JsURL.kt)
+* 链接解析[JsURL](https://github.com/gedoor/legado/blob/master/app/src/main/java/io/legado/app/utils/JsURL.kt)　
 ```js
 java.toURL(url): JsURL
 java.toURL(url, baseUrl): JsURL
@@ -248,7 +255,7 @@ java.encodeURI(str: String) //默认enc="UTF-8"
 java.encodeURI(str: String, enc: String)
 ```
 * base64
-> flags参数可省略，默认Base64.NO_WRAP，查看[flags参数说明](https://blog.csdn.net/zcmain/article/details/97051870)
+> flags参数可省略，默认Base64.NO_WRAP，查看[flags参数说明](https://blog.csdn.net/zcmain/article/details/97051870)　
 ```js
 java.base64Decode(str: String)
 java.base64Decode(str: String, charset: String)
@@ -451,6 +458,7 @@ book.getVariable(key: String): String?
 ```js
 chapter.putVariable(key: String, variable: String?)
 chapter.getVariable(key: String): String?
+//在函数回调或登录界面等地方调用，chapter自身不会进行保存，需要调用chapter.update()
 ```
  * 章节信息存储
 ```js

@@ -72,9 +72,9 @@ object WebViewPool {
             pooledWebView.realWebView.destroy()
             return
         }
-        pooledWebView.upContext(MutableContextWrapper(appCtx))
         // 重置WebView状态
         resetWebView(pooledWebView.realWebView)
+        pooledWebView.upContext(MutableContextWrapper(appCtx))
         pooledWebView.isInUse = false
         if (idlePool.size < CACHED_WEB_VIEW_MAX_NUM - inUsePool.size) {
             pooledWebView.lastUseTime = System.currentTimeMillis()
@@ -89,18 +89,23 @@ object WebViewPool {
     private fun resetWebView(webView: WebView) = with(webView) {
         try {
             (parent as? ViewGroup)?.removeView(webView)
+            webView.layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
             stopLoading()
             clearFocus() //清除焦点
-            setOnLongClickListener(null)
+            webView.setOnLongClickListener(null)
+            webView.setOnScrollChangeListener(null)
             webChromeClient = null
             webViewClient = WebViewClient()
 
-//            webView.clearCache(false) //清除缓存
+//            webView.clearCache(true) //清除缓存
 //            webView.clearHistory() //清除历史记录
             clearFormData() //清除表单数据
             clearMatches() //清除查找匹配项
 //            webView.clearSslPreferences() //清除SSL首选项
-            clearDisappearingChildren() //清除消失中的子视图
+//            clearDisappearingChildren() //清除消失中的子视图
             clearAnimation() //清除动画
             removeJavascriptInterface(nameBasic)
             removeJavascriptInterface(nameJava)
@@ -108,9 +113,11 @@ object WebViewPool {
             removeJavascriptInterface(nameCache)
             settings.apply {
                 javaScriptEnabled = false
-                javaScriptEnabled = true // 禁用再启用来重置js环境，清理注入的接口，注意需要禁用的订阅源需要再次执行
+                javaScriptEnabled = true // 禁用再启用来重置js环境，注意需要禁用的订阅源需要再次执行
                 blockNetworkImage = false // 确保允许加载网络图片
                 cacheMode = WebSettings.LOAD_DEFAULT // 重置缓存模式
+                useWideViewPort = false // 恢复默认关闭宽视模式
+                loadWithOverviewMode = false // 恢复默认
             }
             loadUrl(BLANK_HTML)
         } catch (e: Exception) {
@@ -131,6 +138,10 @@ object WebViewPool {
     // 初始化
     @SuppressLint("SetJavaScriptEnabled")
     private fun preInitWebView(webView: WebView) {
+        webView.layoutParams = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        )
         webView.settings.apply {
             javaScriptEnabled = true
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
@@ -140,6 +151,7 @@ object WebViewPool {
             builtInZoomControls = true
             displayZoomControls = false
             setDarkeningAllowed(AppConfig.isNightTheme)
+            textZoom = 100
         }
         webView.setDownloadListener { url, _, contentDisposition, _, _ ->
             var fileName = URLUtil.guessFileName(url, contentDisposition, null)

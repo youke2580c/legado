@@ -81,6 +81,7 @@ import io.legado.app.utils.StartActivityContract
 import kotlinx.coroutines.runBlocking
 import androidx.core.net.toUri
 import io.legado.app.constant.AppPattern
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.webView.WebJsExtensions.Companion.JS_INJECTION
 import io.legado.app.help.webView.WebJsExtensions.Companion.basicJs
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameBasic
@@ -93,6 +94,7 @@ import io.legado.app.help.webView.WebViewPool
 import io.legado.app.help.webView.WebViewPool.BLANK_HTML
 import io.legado.app.help.webView.WebViewPool.DATA_HTML
 import java.lang.ref.WeakReference
+import splitties.systemservices.powerManager
 
 /**
  * rss阅读界面
@@ -109,6 +111,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
     private var starMenuItem: MenuItem? = null
     private var ttsMenuItem: MenuItem? = null
     private var isFullscreen = false
+    private var wasScreenOff = false
     private var customWebViewCallback: WebChromeClient.CustomViewCallback? = null
     private var isInterfaceInjected = false
     private var needClearHistory = true
@@ -484,14 +487,21 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
 
     override fun onPause() {
         super.onPause()
-        currentWebView.pauseTimers()
-        currentWebView.onPause()
+        if (powerManager.isInteractive) {
+            wasScreenOff = false
+            currentWebView.pauseTimers()
+            currentWebView.onPause()
+        } else {
+            wasScreenOff = true
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        currentWebView.resumeTimers()
-        currentWebView.onResume()
+        if (!wasScreenOff) {
+            currentWebView.resumeTimers()
+            currentWebView.onResume()
+        }
     }
 
     override fun onDestroy() {
@@ -500,27 +510,25 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
     }
 
 
-    class JSInterface(activity: ReadRssActivity) {
+    @Suppress("unused")
+    private class JSInterface(activity: ReadRssActivity) {
         private val activityRef: WeakReference<ReadRssActivity> = WeakReference(activity)
         @JavascriptInterface
         fun lockOrientation(orientation: String) {
             val ctx = activityRef.get()
-            if (ctx != null && !ctx.isFinishing && !ctx.isDestroyed) {
+            if (ctx != null && ctx.isFullscreen && !ctx.isFinishing && !ctx.isDestroyed) {
                 ctx.runOnUiThread {
-                    if (ctx.isFullscreen) {
-                        ctx.requestedOrientation = when (orientation) {
-                            "portrait", "portrait-primary" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                            "portrait-secondary" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
-                            "landscape", "landscape-primary" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE //横屏的时候受重力正反控制
-                            //ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                            "landscape-secondary" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
-                            "any", "unspecified" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
-                            else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                        }
+                    ctx.requestedOrientation = when (orientation) {
+                        "portrait", "portrait-primary" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        "portrait-secondary" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+                        "landscape" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE //横屏且受重力控制正反
+                        "landscape-primary" -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE //正向横屏
+                        "landscape-secondary" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE //反向横屏
+                        "any", "unspecified" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
+                        else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                     }
                 }
             }
-
         }
 
         @JavascriptInterface
@@ -570,18 +578,12 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
 
         /* 监听网页日志 */
         override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
-            viewModel.rssSource?.let {
-                if (it.showWebLog) {
-                    val consoleException = Exception("${consoleMessage.messageLevel().name}: \n${consoleMessage.message()}\n-Line ${consoleMessage.lineNumber()} of ${consoleMessage.sourceId()}")
-                    val message = it.sourceName + ": ${consoleMessage.message()}"
-                    when (consoleMessage.messageLevel()) {
-                        ConsoleMessage.MessageLevel.LOG -> AppLog.put(message)
-                        ConsoleMessage.MessageLevel.DEBUG -> AppLog.put(message, consoleException)
-                        ConsoleMessage.MessageLevel.WARNING -> AppLog.put(message, consoleException)
-                        ConsoleMessage.MessageLevel.ERROR -> AppLog.put(message, consoleException)
-                        ConsoleMessage.MessageLevel.TIP -> AppLog.put(message)
-                        else -> AppLog.put(message)
-                    }
+            viewModel.rssSource?.let { source ->
+                if (source.showWebLog) {
+                    val messageLevel = consoleMessage.messageLevel().name
+                    val message = consoleMessage.message()
+                    AppLog.put("${source.getTag()}${messageLevel}: $message",
+                        NoStackTraceException("\n${message}\n- Line ${consoleMessage.lineNumber()} of ${consoleMessage.sourceId()}"))
                     return true
                 }
             }
@@ -678,7 +680,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
                     AppPattern.htmlHeadRegex.find(originalText)?.let { match ->
                         originalText.replaceRange(
                             match.range,
-                            "${match.value}<script>(() => {$JS_INJECTION$preloadJs\n})();</script>"
+                            "${match.value}<script>(() => {$JS_INJECTION\n$preloadJs\n})();</script>"
                         )
                     } ?: originalText
                 }
@@ -701,10 +703,14 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
             currentWebView.evaluateJavascript(basicJs, null)
         }
 
-        override fun onPageFinished(view: WebView, url: String?) {
+        override fun onPageFinished(view: WebView, url: String) {
             super.onPageFinished(view, url)
             view.title?.let { title ->
-                if (title != url && title != view.url && title.isNotBlank() && url != BLANK_HTML) {
+                if (title != url
+                    && title != view.url
+                    && title.isNotBlank()
+                    && url != BLANK_HTML
+                    && !url.contains(title)) {
                     binding.titleBar.title = title
                 } else {
                     binding.titleBar.title = intent.getStringExtra("title")

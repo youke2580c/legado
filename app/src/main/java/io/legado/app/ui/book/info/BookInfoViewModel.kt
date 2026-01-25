@@ -4,8 +4,10 @@ import android.app.Application
 import android.content.Intent
 import android.net.Uri
 import android.view.MenuItem
+import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import com.script.rhino.runScriptWithContext
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
@@ -37,7 +39,8 @@ import io.legado.app.model.ReadManga
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.model.webBook.WebBook
-import io.legado.app.ui.book.source.SourceCallBack
+import io.legado.app.model.SourceCallBack
+import io.legado.app.ui.login.SourceLoginJsExtensions
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.isContentScheme
@@ -68,6 +71,11 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                 return@execute
             }
             if (bookUrl.isNotBlank()) {
+                appDb.bookDao.getBook(bookUrl)?.let {
+                    inBookshelf = !it.isNotShelf
+                    upBook(it)
+                    return@execute
+                }
                 appDb.searchBookDao.getSearchBook(bookUrl)?.toBook()?.let {
                     upBook(it)
                     return@execute
@@ -515,6 +523,25 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
             loadChapter(it)
             inBookshelf = true
             it
+        }
+    }
+
+    fun onButtonClick(activity: AppCompatActivity, name: String, click: String?) {
+        val source = bookSource ?: return
+        val book = bookData.value ?: return
+        val jsStr = click ?: return
+        execute {
+            val java = SourceLoginJsExtensions(activity, source)
+            runScriptWithContext {
+                source.evalJS(jsStr) {
+                    put("result", null)
+                    put("java", java)
+                    put("book", book)
+                }
+            }
+        }.onError {
+            AppLog.put("${source.bookSourceName}: ${it.localizedMessage}", it)
+            context.toastOnUi("$name button click error\n${it.localizedMessage}")
         }
     }
 

@@ -69,8 +69,11 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
     private var rowUiName = arrayListOf<String>()
     private var hasChange = false
     private val sourceLoginJsExtensions by lazy {
-        SourceLoginJsExtensions(activity as AppCompatActivity, viewModel.source,
-            object : SourceLoginJsExtensions.Callback {
+        SourceLoginJsExtensions(
+            activity as AppCompatActivity,
+            viewModel.source,
+            viewModel.bookType,
+            callback = object : SourceLoginJsExtensions.Callback {
                 override fun upUiData(data: Map<String, String?>?) {
                     activity?.runOnUiThread { // 在主线程中更新 UI
                         handleUpUiData(data)
@@ -96,6 +99,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
             }
         }
         if (codeStr != null) {
+            hasChange = true
             lifecycleScope.launch(Main) {
                 val loginUiJson = evalUiJs(codeStr)
                 rowUis = loginUi(loginUiJson)
@@ -141,10 +145,10 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                     }
 
                     is LinearLayout -> {
-                        val items = rowUi.chars?.filterNotNull() ?: listOf("chars","is null")
-                        val index = items.indexOf(default)
+                        val chars = rowUi.chars?.filterNotNull() ?: listOf("chars","is null")
+                        val index = chars.indexOf(default)
                         newLoginInfo[rowUi.name] = default ?: run{
-                            items.getOrNull(0) ?: ""
+                            chars.getOrNull(0) ?: ""
                         }
                         rowView.findViewById<AppCompatSpinner>(R.id.sp_type)?.setSelectionSafely(index)
                     }
@@ -214,11 +218,13 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
             getLoginData(it)
         } ?: viewModel.loginInfo.toMutableMap()
         try {
-            source.evalJS("$loginJS\n$jsStr") {
-                put("result", result)
-                put("book", viewModel.book)
-                put("chapter", viewModel.chapter)
-            }.toString()
+            runScriptWithContext {
+                source.evalJS("$loginJS\n$jsStr") {
+                    put("result", result)
+                    put("book", viewModel.book)
+                    put("chapter", viewModel.chapter)
+                }.toString()
+            }
         } catch (e: Exception) {
             AppLog.put(source.getTag() + " loginUi err:" + (e.localizedMessage ?: e.toString()), e)
             null
@@ -231,7 +237,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
         }.getOrNull()
     }
 
-    @SuppressLint("ClickableViewAccessibility", "SetTextI18n")
+    @SuppressLint("SetTextI18n", "ClickableViewAccessibility")
     private fun rowUiBuilder(source: BaseSource, rowUis: List<RowUi>?) {
         val loginInfo = viewModel.loginInfo
         rowUiName.clear()
@@ -407,11 +413,11 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                             it.spName.text = "err"
                         }
                     }
-                    val items = rowUi.chars?.filterNotNull() ?: listOf("chars","is null")
+                    val chars = rowUi.chars?.filterNotNull() ?: listOf("chars","is null")
                     val adapter = ArrayAdapter(
                         requireContext(),
                         R.layout.item_text_common,
-                        items
+                        chars
                     )
                     adapter.setDropDownViewResource(R.layout.item_spinner_dropdown)
                     val selector = it.spType
@@ -419,12 +425,12 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                     val infoV = loginInfo[name]
                     val char = if (infoV.isNullOrEmpty()) {
                         hasChange = true
-                        rowUi.default ?: items[0]
+                        rowUi.default ?: chars[0]
                     } else {
                         infoV
                     }
                     loginInfo[name] = char
-                    val i = items.indexOf(char)
+                    val i = chars.indexOf(char)
                     selector.setSelectionSafely(i)
                     selector.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                         var isInitializing = true
@@ -434,7 +440,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                                 return
                             }
                             hasChange = true
-                            loginInfo[name] = items[position]
+                            loginInfo[name] = chars[position]
                             if (action != null) {
                                 execute {
                                     handleButtonClick(source, action, name, rowUis, false)
@@ -494,6 +500,9 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                     }
                     it.textView.setPadding(16.dpToPx())
                     var downTime = 0L
+                    it.root.setOnClickListener { //无障碍点击
+                        handleButtonClick(source, action, name, rowUis, false)
+                    }
                     it.root.setOnTouchListener { view, event ->
                         when (event.action) {
                             MotionEvent.ACTION_DOWN -> {
@@ -568,6 +577,15 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                     }
                     it.textView.setPadding(16.dpToPx())
                     var downTime = 0L
+                    it.root.setOnClickListener { _ ->
+                        val currentIndex = chars.indexOf(char)
+                        val nextIndex = (currentIndex + 1) % chars.size
+                        char = chars.getOrNull(nextIndex) ?: ""
+                        hasChange = true
+                        loginInfo[name] = char
+                        it.textView.text = if (left) char + newName else newName + char
+                        handleButtonClick(source, action, name, rowUis, false)
+                    }
                     it.root.setOnTouchListener { view, event ->
                         when (event.action) {
                             MotionEvent.ACTION_DOWN -> {

@@ -8,16 +8,20 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.model.ReadAloud
 import io.legado.app.ui.rss.read.RssJsExtensions
+import io.legado.app.ui.widget.dialog.BottomWebViewDialog
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.sendToClip
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import java.io.File
 
+@Suppress("unused")
 class SourceLoginJsExtensions(
-    private val activity: AppCompatActivity, source: BaseSource?,
+    activity: AppCompatActivity?, source: BaseSource?,
+    private val bookType: Int = 0,
     private val callback: Callback? = null
 ) : RssJsExtensions(activity, source) {
 
@@ -34,12 +38,16 @@ class SourceLoginJsExtensions(
         callback?.reUiView()
     }
 
+    fun refreshExplore() {
+        callback?.reUiView()
+    }
+
     fun refreshBookInfo() {
         postEvent(EventBus.REFRESH_BOOK_INFO, true)
     }
 
     fun copyText(text: String) {
-        activity.sendToClip(text)
+        activityRef.get()?.sendToClip(text)
     }
 
     fun clearTtsCache() {
@@ -54,4 +62,21 @@ class SourceLoginJsExtensions(
             activity.toastOnUi(R.string.clear_cache_success)
         }
     }
+
+    @JvmOverloads
+    fun showBrowser(url: String, html: String? = null, preloadJs: String? = null, config: String? = null) {
+        val activity = activityRef.get() ?: return
+        val source = getSource() ?: return
+        activity.showDialogFragment(
+            BottomWebViewDialog(
+                source.getKey(),
+                bookType,
+                url,
+                html,
+                preloadJs,
+                config
+            )
+        )
+    }
+
 }
