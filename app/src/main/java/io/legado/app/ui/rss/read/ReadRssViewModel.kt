@@ -17,9 +17,9 @@ import io.legado.app.data.entities.RssSource
 import io.legado.app.data.entities.RssStar
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.TTS
-import io.legado.app.help.webView.WebJsExtensions.Companion.JS_INJECTION
 import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
+import io.legado.app.help.webView.WebJsExtensions.Companion.JS_URL
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.rss.Rss
 import io.legado.app.utils.ACache
@@ -67,7 +67,6 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
                     } else {
                         appDb.rssArticleDao.get(origin, link, sort)
                     }
-
                 rssArticle?.let { article ->
                     if (!article.description.isNullOrBlank()) {
                         contentLiveData.postValue(article.description!!)
@@ -84,10 +83,10 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
                 } ?: return@execute
             } else {
                 val ruleContent = rssSource?.ruleContent
-                val startHtml = intent.getBooleanExtra("startHtml", false)
+                val startHtml = intent.getStringExtra("startHtml")
                 val openUrl = intent.getStringExtra("openUrl")
-                if (startHtml) {
-                    loadStartHtml()
+                if (startHtml != null) {
+                    loadStartHtml(startHtml)
                 } else if (ruleContent.isNullOrBlank()) {
                     loadUrl(openUrl ?: origin, origin)
                 } else if (rssSource!!.singleUrl) {
@@ -222,62 +221,66 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    fun clHtml(content: String, style: String? = rssSource?.style): String {
-        val preloadJs = rssSource?.preloadJs ?: ""
-        var processedHtml = content
-        processedHtml = if (processedHtml.contains("<head>")) {
-            processedHtml.replaceFirst("<head>", "<head><script>(() => {$JS_INJECTION\n$preloadJs\n})();</script>")
-        } else {
-            "<head><script>(() => {$JS_INJECTION\n$preloadJs\n})();</script></head>$processedHtml"
-        }
-        if (processedHtml.contains("<style>")) {
-            if (!style.isNullOrBlank()) {
-                processedHtml = processedHtml.replaceFirst("</style>", "</style><style>$style</style>")
+    fun clHtml(content: String, style: String?): String {
+        val htmlBuilder = StringBuilder(content.length + JS_URL.length + 200)
+        if (hasPreloadJs) {
+            val headIndex = content.indexOf("<head>")
+            if (headIndex >= 0) {
+                htmlBuilder.append(content, 0, headIndex + 6)
+                htmlBuilder.append(JS_URL)
+                htmlBuilder.append(content, headIndex + 6, content.length)
+            } else {
+                htmlBuilder.append("<head>").append(JS_URL).append("</head>")
+                htmlBuilder.append(content)
             }
         } else {
-            processedHtml = processedHtml.replaceFirst("</head>", "<style>${
-                style.takeIf { !it.isNullOrBlank() } ?:
-                "img{max-width:100% !important; width:auto; height:auto;}video{object-fit:fill; max-width:100% !important; width:auto; height:auto;}body{word-wrap:break-word; height:auto;max-width: 100%; width:auto;}"
-            }</style></head>")
+            htmlBuilder.append(content)
         }
-        return processedHtml
+        val styleEndIndex = htmlBuilder.indexOf("</style>")
+        return if (styleEndIndex >= 0) {
+            if (!style.isNullOrBlank()) {
+                htmlBuilder.insert(styleEndIndex + 8, "<style>$style</style>").toString()
+            } else {
+                htmlBuilder.toString()
+            }
+        } else {
+            val finalStyle = style.takeIf { !it.isNullOrBlank() } ?:
+            "img{max-width:100% !important; width:auto; height:auto;}video{object-fit:fill; max-width:100% !important; width:auto; height:auto;}body{word-wrap:break-word; height:auto;max-width: 100%; width:auto;}"
+            val headEndIndex = htmlBuilder.indexOf("</head>")
+            if (headEndIndex >= 0) {
+                htmlBuilder.insert(headEndIndex, "<style>$finalStyle</style>").toString()
+            } else {
+                htmlBuilder.insert(0, "<style>$finalStyle</style>").toString()
+            }
+        }
     }
 
-    private fun loadStartHtml() {
+    private fun loadStartHtml(startHtml: String) {
         val source = rssSource
         if (source == null) {
             htmlLiveData.postValue("<body>rssSource is null</body>")
             return
         }
-        val startHtml = source.startHtml ?: return
         execute {
-            var processedHtml = try {
-                when {
-                    startHtml.startsWith("@js:") -> runScriptWithContext {
-                        source.evalJS(startHtml.substring(4)).toString()
-                    }
-
-                    startHtml.startsWith("<js>") -> runScriptWithContext {
-                        source.evalJS(
-                            startHtml.substring(
-                                4,
-                                startHtml.lastIndexOf("<")
-                            )
-                        ).toString()
-                    }
-
-                    else -> startHtml
-                }
-            } catch (e: Throwable) {
-                e.localizedMessage
-            }
             val javascript = rssSource?.startJs
-            if (!javascript.isNullOrBlank()) {
-                processedHtml = if (processedHtml.contains("</body>")) {
-                    processedHtml.replaceFirst("</body>", "<script>$javascript</script></body>")
+            var processedHtml = if (!javascript.isNullOrBlank()) {
+                val bodyEndIndex = startHtml.indexOf("</body>")
+                if (bodyEndIndex >= 0) {
+                    StringBuilder(startHtml.length + javascript.length + 20)
+                        .append(startHtml, 0, bodyEndIndex)
+                        .append("<script>$javascript</script>")
+                        .append(startHtml, bodyEndIndex, startHtml.length)
+                        .toString()
                 } else {
-                    "<body>$processedHtml<script>$javascript</script></body>"
+                    StringBuilder(startHtml.length + javascript.length + 25)
+                        .append("<body>")
+                        .append(startHtml)
+                        .append("<script>$javascript</script>")
+                        .append("</body>")
+                        .toString()
                 }
+            } else {
+                startHtml
             }
             processedHtml = clHtml(processedHtml, source.startStyle ?: source.style)
             htmlLiveData.postValue(processedHtml)

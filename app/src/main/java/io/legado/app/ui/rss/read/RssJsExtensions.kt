@@ -9,11 +9,13 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.RssReadRecord
 import io.legado.app.data.entities.RssSource
 import io.legado.app.help.JsExtensions
+import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.ui.association.AddToBookshelfDialog
 import io.legado.app.ui.book.explore.ExploreShowActivity
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.rss.article.RssSortActivity
+import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
@@ -24,6 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.lang.ref.WeakReference
+import java.net.URL
 
 
 @Suppress("unused")
@@ -37,7 +40,7 @@ open class RssJsExtensions(activity: AppCompatActivity?, source: BaseSource?) : 
     }
 
     override fun getTag(): String? {
-        return sourceRef.get()?.getTag()
+        return getSource()?.getTag()
     }
 
     @JavascriptInterface
@@ -67,6 +70,12 @@ open class RssJsExtensions(activity: AppCompatActivity?, source: BaseSource?) : 
     fun addBook(bookUrl: String) {
         activityRef.get()?.showDialogFragment(AddToBookshelfDialog(bookUrl))
     }
+
+    @JavascriptInterface
+    fun showPhoto(src: String) {
+        activityRef.get()?.showDialogFragment(PhotoDialog(src, getSource()?.getKey()))
+    }
+
 
     @JavascriptInterface
     @JvmOverloads
@@ -173,6 +182,48 @@ open class RssJsExtensions(activity: AppCompatActivity?, source: BaseSource?) : 
                 }
             }
         }
+    }
+
+    /** AnalyzeRule实现 **/
+    open val analyzeRule by lazy { AnalyzeRule(source = getSource()) }
+
+    @JavascriptInterface
+    @JvmOverloads
+    fun setContent(content: Any?, baseUrl: String? = null): AnalyzeRule {
+        return analyzeRule.setContent(content, baseUrl)
+    }
+
+    @JavascriptInterface
+    fun setBaseUrl(baseUrl: String?): AnalyzeRule {
+        return analyzeRule.setBaseUrl(baseUrl)
+    }
+
+    @JavascriptInterface
+    fun setRedirectUrl(url: String): URL? {
+        return analyzeRule.setRedirectUrl(url)
+    }
+
+    @JvmOverloads
+    fun getStringList(rule: String?, mContent: Any? = null, isUrl: Boolean = false): List<String>? {
+        return analyzeRule.getStringList(rule, mContent, isUrl)
+    }
+
+    @JvmOverloads
+    fun getString(ruleStr: String?, mContent: Any? = null, isUrl: Boolean = false): String {
+        return analyzeRule.getString(ruleStr, mContent, isUrl)
+    }
+
+    @JavascriptInterface
+    fun getString(ruleStr: String?, unescape: Boolean): String {
+        return analyzeRule.getString(ruleStr, unescape)
+    }
+
+    fun getElement(ruleStr: String): Any? {
+        return analyzeRule.getElement(ruleStr)
+    }
+
+    fun getElements(ruleStr: String): List<Any> {
+        return analyzeRule.getElements(ruleStr)
     }
 
 }

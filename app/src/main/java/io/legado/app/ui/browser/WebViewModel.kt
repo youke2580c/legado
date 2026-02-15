@@ -25,7 +25,7 @@ import io.legado.app.utils.toastOnUi
 import org.apache.commons.text.StringEscapeUtils
 import java.util.Date
 import io.legado.app.data.entities.BaseSource
-import io.legado.app.help.webView.WebJsExtensions.Companion.JS_INJECTION
+import io.legado.app.help.webView.WebJsExtensions.Companion.JS_INJECTION2
 
 class WebViewModel(application: Application) : BaseViewModel(application) {
     var source: BaseSource? = null
@@ -55,10 +55,17 @@ class WebViewModel(application: Application) : BaseViewModel(application) {
             refetchAfterSuccess = intent.getBooleanExtra("refetchAfterSuccess", true)
             html = intent.getStringExtra("html")?.let{
                 localHtml = true
-                if (it.contains("<head>")) {
-                    it.replaceFirst("<head>", "<head><script>$JS_INJECTION</script>")
+                val headIndex = it.indexOf("<head", ignoreCase = true)
+                if (headIndex >= 0) {
+                    val closingHeadIndex = it.indexOf('>', startIndex = headIndex)
+                    if (closingHeadIndex >= 0) {
+                        val insertPos = closingHeadIndex + 1
+                        StringBuilder(it).insert(insertPos, "<script>$JS_INJECTION2</script>").toString()
+                    } else {
+                        "<head><script>$JS_INJECTION2</script></head>$it"
+                    }
                 } else {
-                    "<head><script>$JS_INJECTION</script></head>$it"
+                    "<head><script>$JS_INJECTION2</script></head>$it"
                 }
             }
             source = SourceHelp.getSource(sourceOrigin, sourceType)

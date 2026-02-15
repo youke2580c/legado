@@ -28,7 +28,7 @@ object AppUpdateGitee : AppUpdate.AppUpdateInterface {
 
     private suspend fun getLatestRelease(): List<AppReleaseInfo> {
         val lastReleaseUrl = if (checkVariant.isBeta()) {
-            "https://gitee.com/api/v5/repos/lyc486/legado/releases/tags/beta"
+            "https://gitee.com/api/v5/repos/lyc486/legado/releases/latest"
         } else {
             "https://gitee.com/api/v5/repos/lyc486/legado/releases?page=1&per_page=3&direction=desc"
         }
@@ -38,8 +38,8 @@ object AppUpdateGitee : AppUpdate.AppUpdateInterface {
         if (!res.isSuccessful) {
             throw NoStackTraceException("获取新版本出错(${res.code})")
         }
-        val body = res.body?.text()
-        if (body.isNullOrBlank()) {
+        val body = res.body.text()
+        if (body.isBlank()) {
             throw NoStackTraceException("获取新版本出错")
         }
         if (!checkVariant.isBeta()) {
@@ -74,7 +74,7 @@ object AppUpdateGitee : AppUpdate.AppUpdateInterface {
                         it.name
                     )
                 }
-                ?: throw NoStackTraceException("已是最新版本")
+            throw NoStackTraceException("已是最新版本")
         }.timeout(10000)
     }
 }

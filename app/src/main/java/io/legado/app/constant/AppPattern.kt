@@ -6,6 +6,8 @@ import java.util.regex.Pattern
 object AppPattern {
     val JS_PATTERN: Pattern =
         Pattern.compile("<js>([\\w\\W]*?)</js>|@js:([\\w\\W]*)", Pattern.CASE_INSENSITIVE)
+    val WebJS_PATTERN: Pattern =
+        Pattern.compile("@webjs:([\\w\\W]{5,})", Pattern.CASE_INSENSITIVE)
     val EXP_PATTERN: Pattern = Pattern.compile("\\{\\{([\\w\\W]*?)\\}\\}")
 
     //匹配格式化后的图片格式
@@ -13,9 +15,6 @@ object AppPattern {
 
     //匹配自定义html格式字符串
     val useHtmlRegex = Regex("<usehtml>.*?</usehtml>", RegexOption.DOT_MATCHES_ALL) //.包含换行
-
-    //匹配html字符串中的head
-    val htmlHeadRegex = Regex("<head[^>]*>",RegexOption.IGNORE_CASE)
 
     //dataURL图片类型
     val dataUriRegex = Regex("^data:.*?;base64,(.*)")

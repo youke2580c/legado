@@ -10,11 +10,13 @@ import io.github.rosemoe.sora.langs.textmate.registry.model.ThemeModel
 import io.github.rosemoe.sora.langs.textmate.registry.provider.AssetsFileResolver
 import io.github.rosemoe.sora.widget.CodeEditor
 import io.legado.app.base.BaseViewModel
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern.JS_PATTERN
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.CacheManager
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.BackstageWebView
-import io.legado.app.utils.escapeForJs
+import io.legado.app.help.webView.WebJsExtensions.Companion.nameCache
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.toastOnUi
 import org.eclipse.tm4e.core.registry.IThemeSource
@@ -22,24 +24,22 @@ import org.jsoup.Jsoup
 import splitties.init.appCtx
 
 class CodeEditViewModel(application: Application) : BaseViewModel(application) {
-    companion object {
-        val themeFileNames = arrayOf(
-            "d_monokai_dimmed",
-            "d_monokai",
-            "d_modern",
-            "l_modern",
-            "d_solarized",
-            "l_solarized",
-            "d_abyss",
-            "l_quiet"
-        )
-    }
+    private val themeFileNames = arrayOf(
+        "d_monokai_dimmed",
+        "d_monokai",
+        "d_modern",
+        "l_modern",
+        "d_solarized",
+        "l_solarized",
+        "d_abyss",
+        "l_quiet"
+    )
 
     var initialText = ""
     var cursorPosition = 0
     var language: TextMateLanguage? = null
-    var languageName = "source.js"
-    val themeRegistry: ThemeRegistry = ThemeRegistry.getInstance()
+    private var languageName = "source.js"
+    private val themeRegistry: ThemeRegistry = ThemeRegistry.getInstance()
     var writable = true
     var title: String? = null
 
@@ -109,24 +109,40 @@ class CodeEditViewModel(application: Application) : BaseViewModel(application) {
             if (isHtml) {
                 return@execute formatCodeHtml(text)
             }
-            var start = 0
-            val jsMatcher = JS_PATTERN.matcher(text)
             var result = ""
-            while (jsMatcher.find()) {
-                if (jsMatcher.start() > start) {
-                    result += text.substring(start, jsMatcher.start()).trim()
+            var start = 0
+            val indexS = text.indexOf("<js>")
+            if (indexS >= 0) {
+                if (indexS > 0) {
+                    result += text.substring(start, indexS).trim()
                 }
-                if (jsMatcher.group(2) != null) {
-                    result += "@js:\n"
-                    val jsCode = jsMatcher.group(2)!!
-                    result += webFormatCode(jsCode)
-                } else if (jsMatcher.group(1) != null) {
-                    result += "<js>\n"
-                    val jsCode = jsMatcher.group(1)!!
-                    result += webFormatCode(jsCode)
-                    result += "\n</js>"
+                val indexE = text.indexOf("</js>", indexS)
+                val jsCode = text.substring(indexS + 4, indexE)
+                result += "<js>\n"
+                result += webFormatCode(jsCode)
+                result += "\n</js>"
+                start = indexE + 5
+            }
+            val indexS2 = text.indexOf("@js:")
+            if (indexS2 >= 0) {
+                if (indexS2 > start) {
+                    result += text.substring(start, indexS2).trim()
                 }
-                start = jsMatcher.end()
+                val jsCode = text.substring(indexS2 + 4)
+                result += "@js:\n"
+                result += webFormatCode(jsCode)
+                start = text.length
+            } else {
+                val indexS2 = text.indexOf("@webjs:")
+                if (indexS2 >= 0) {
+                    if (indexS2 > start) {
+                        result += text.substring(start, indexS2).trim()
+                    }
+                    val jsCode = text.substring(indexS2 + 7)
+                    result += "@webjs:\n"
+                    result += webFormatCode(jsCode)
+                    start = text.length
+                }
             }
             if (start == 0) {
                 result += webFormatCode(text)
@@ -139,17 +155,17 @@ class CodeEditViewModel(application: Application) : BaseViewModel(application) {
         }.onSuccess {
             editor.setText(it)
         }.onError {
-            context.toastOnUi("格式化失败")
+            AppLog.put("格式化失败",it, true)
         }
     }
 
     private suspend fun webFormatCode(jsCode: String): String? {
-        return try {
-            BackstageWebView(
-                url = null,
-                html = "<body><script src=\"https://cdnjs.cloudflare.com/ajax/libs/js-beautify/1.15.4/beautify.min.js\"></script></body>",
-                javaScript = """
-                js_beautify("${jsCode.escapeForJs()}", {
+        CacheManager.putMemory("web_format_code", jsCode)
+        return BackstageWebView(
+            url = null,
+            html = """<html><body><script src="https://cdnjs.cloudflare.com/ajax/libs/js-beautify/1.15.4/beautify.min.js"></script>
+                <script>
+                window.re = js_beautify($nameCache.getFromMemory('web_format_code'), {
                 indent_size: 4,
                 indent_char: ' ',
                 preserve_newlines: true,
@@ -161,26 +177,21 @@ class CodeEditViewModel(application: Application) : BaseViewModel(application) {
                 end_with_newline: false,
                 wrap_line_length: 0,
                 comma_first: false
-                });""".trimIndent(),
-                cacheFirst = true
-            ).getStrResponse().body
-        } catch (_: Exception) {
-            context.toastOnUi("格式化失败")
-            jsCode
-        }
+                });
+                </script></body></html>""".trimIndent(),
+            javaScript = "window.re",
+            cacheFirst = true,
+            timeout = 5000,
+            isRule = true
+        ).getStrResponse().body
     }
 
     private fun formatCodeHtml(html: String): String? {
-        return try {
-            val doc = Jsoup.parse(html)
-            doc.outputSettings()
-                .indentAmount(4)
-                .prettyPrint(true)
-            doc.outerHtml()
-        } catch (_: Exception) {
-            context.toastOnUi("格式化失败")
-            html
-        }
+        val doc = Jsoup.parse(html)
+        doc.outputSettings()
+            .indentAmount(4)
+            .prettyPrint(true)
+        return doc.outerHtml()
     }
 
 }

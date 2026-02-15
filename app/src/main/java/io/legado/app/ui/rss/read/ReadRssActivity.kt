@@ -19,6 +19,7 @@ import android.webkit.JavascriptInterface
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import android.webkit.SslErrorHandler
+import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -80,9 +81,7 @@ import io.legado.app.ui.rss.source.edit.RssSourceEditActivity
 import io.legado.app.utils.StartActivityContract
 import kotlinx.coroutines.runBlocking
 import androidx.core.net.toUri
-import io.legado.app.constant.AppPattern
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.webView.WebJsExtensions.Companion.JS_INJECTION
 import io.legado.app.help.webView.WebJsExtensions.Companion.basicJs
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameBasic
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameCache
@@ -90,11 +89,18 @@ import io.legado.app.help.webView.WebJsExtensions.Companion.nameJava
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameSource
 import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.webView.PooledWebView
+import io.legado.app.help.webView.WebJsExtensions.Companion.JS_INJECTION
+import io.legado.app.help.webView.WebJsExtensions.Companion.JS_URL
+import io.legado.app.help.webView.WebJsExtensions.Companion.nameUrl
 import io.legado.app.help.webView.WebViewPool
 import io.legado.app.help.webView.WebViewPool.BLANK_HTML
 import io.legado.app.help.webView.WebViewPool.DATA_HTML
+import io.legado.app.model.Download
+import kotlinx.coroutines.Dispatchers.IO
+import splitties.init.appCtx
 import java.lang.ref.WeakReference
 import splitties.systemservices.powerManager
+import java.net.URLDecoder
 
 /**
  * rss阅读界面
@@ -320,7 +326,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         }
     }
 
-    @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
+    @SuppressLint("SetJavaScriptEnabled")
     private fun initWebView() {
         binding.progressBar.fontColor = accentColor
         currentWebView.webChromeClient = CustomWebChromeClient()
@@ -347,6 +353,13 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
                 }
             }
             return@setOnLongClickListener false
+        }
+        currentWebView.setDownloadListener { url, _, contentDisposition, _, _ ->
+            var fileName = URLUtil.guessFileName(url, contentDisposition, null)
+            fileName = URLDecoder.decode(fileName, "UTF-8")
+            currentWebView.longSnackbar(fileName, getString(R.string.action_download)) {
+                Download.start(this, url, fileName)
+            }
         }
     }
 
@@ -377,11 +390,12 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
             viewModel.rssArticle?.let {
                 upJavaScriptEnable()
                 initJavascriptInterface()
+                val rssSource = viewModel.rssSource
                 val url = NetworkUtils.getAbsoluteURL(it.origin, it.link).substringBefore("@js")
-                val html = viewModel.clHtml(content)
+                val html = viewModel.clHtml(content, rssSource?.style)
                 currentWebView.settings.userAgentString =
                     viewModel.headerMap[AppConst.UA_NAME] ?: AppConfig.userAgent
-                if (viewModel.rssSource?.loadWithBaseUrl == true) {
+                if (rssSource?.loadWithBaseUrl == true) {
                     currentWebView.loadDataWithBaseURL(
                         url,
                         html,
@@ -416,7 +430,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
                 currentWebView.settings.userAgentString =
                     viewModel.headerMap[AppConst.UA_NAME] ?: AppConfig.userAgent
                 val baseUrl =
-                    if (viewModel.rssSource?.loadWithBaseUrl == true) it.sourceUrl else null
+                    if (it.loadWithBaseUrl) it.sourceUrl else null
                 currentWebView.loadDataWithBaseURL(
                     baseUrl, html, "text/html", "utf-8", it.sourceUrl
                 )
@@ -604,6 +618,17 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
             return shouldOverrideUrlLoading(url.toUri())
         }
 
+        private var jsInjected = false
+        override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+            jsInjected = false
+            if (needClearHistory) {
+                needClearHistory = false
+                currentWebView.clearHistory() //清除历史
+            }
+            super.onPageStarted(view, url, favicon)
+            currentWebView.evaluateJavascript(basicJs, null)
+        }
+
         /**
          * 如果有黑名单,黑名单匹配返回空白,
          * 没有黑名单再判断白名单,在白名单中的才通过,
@@ -615,15 +640,22 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
             val url = request.url.toString()
             val source = viewModel.rssSource ?: return super.shouldInterceptRequest(view, request)
             if (request.isForMainFrame) {
-                if (viewModel.hasPreloadJs || request.method == "POST") {
-                    if (url.startsWith("data:text/html;")) {
+                if (viewModel.hasPreloadJs) {
+                    if (url.startsWith("data:text/html;") || request.method == "POST") {
                         return super.shouldInterceptRequest(view, request)
                     }
-                    val preloadJs = source.preloadJs
-                    return runBlocking {
-                        getModifiedContentWithJs(url, preloadJs, request) ?: super.shouldInterceptRequest(view, request)
+                    return runBlocking(IO) {
+                        getModifiedContentWithJs(url, request) ?: super.shouldInterceptRequest(view, request)
                     }
                 }
+            } else if (!jsInjected && url == nameUrl) {
+                jsInjected = true
+                val preloadJs = source.preloadJs ?: ""
+                return WebResourceResponse(
+                    "text/javascript",
+                    "utf-8",
+                    ByteArrayInputStream("(() => {$JS_INJECTION\n$preloadJs\n})();".toByteArray())
+                )
             }
             val blacklist = source.contentBlacklist?.splitNotBlank(",")
             if (!blacklist.isNullOrEmpty()) {
@@ -655,7 +687,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
             return super.shouldInterceptRequest(view, request)
         }
 
-        private suspend fun getModifiedContentWithJs(url: String, preloadJs: String?, request: WebResourceRequest): WebResourceResponse? {
+        private suspend fun getModifiedContentWithJs(url: String, request: WebResourceRequest): WebResourceResponse? {
             try {
                 val cookie = webCookieManager.getCookie(url)
                 val res = okHttpClient.newCallResponse {
@@ -677,12 +709,18 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
                 val charset = contentType?.charset() ?: Charsets.UTF_8
                 val charsetSre = charset.name()
                 val bodyText = body.text().let { originalText ->
-                    AppPattern.htmlHeadRegex.find(originalText)?.let { match ->
-                        originalText.replaceRange(
-                            match.range,
-                            "${match.value}<script>(() => {$JS_INJECTION\n$preloadJs\n})();</script>"
-                        )
-                    } ?: originalText
+                    val headIndex = originalText.indexOf("<head", ignoreCase = true)
+                    if (headIndex >= 0) {
+                        val closingHeadIndex = originalText.indexOf('>', startIndex = headIndex)
+                        if (closingHeadIndex >= 0) {
+                            val insertPos = closingHeadIndex + 1
+                            StringBuilder(originalText).insert(insertPos, JS_URL).toString()
+                        } else {
+                            originalText
+                        }
+                    } else {
+                        originalText
+                    }
                 }
                 return WebResourceResponse(
                     mimeType,
@@ -692,15 +730,6 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
             } catch (_: Exception) {
                 return null
             }
-        }
-
-        override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-            if (needClearHistory) {
-                needClearHistory = false
-                currentWebView.clearHistory() //清除历史
-            }
-            super.onPageStarted(view, url, favicon)
-            currentWebView.evaluateJavascript(basicJs, null)
         }
 
         override fun onPageFinished(view: WebView, url: String) {
