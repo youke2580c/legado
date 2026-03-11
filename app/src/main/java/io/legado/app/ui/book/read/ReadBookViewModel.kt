@@ -27,6 +27,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
+import io.legado.app.model.SourceCallBack
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.BaseReadAloudService
@@ -133,14 +134,22 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         }
         ReadBook.upMsg(null)
         if (!isSameBook) {
-            ReadBook.loadContent(resetPageOffset = true)
+            ReadBook.loadContent(resetPageOffset = true) {
+                ReadBook.bookSource?.let {
+                    SourceCallBack.callBackBook(SourceCallBack.START_READ, it, book, ReadBook.curTextChapter?.chapter)
+                }
+            }
         } else {
-            ReadBook.loadOrUpContent()
+            ReadBook.loadOrUpContent {
+                ReadBook.bookSource?.let {
+                    SourceCallBack.callBackBook(SourceCallBack.START_READ, it, book, ReadBook.curTextChapter?.chapter)
+                }
+            }
         }
         if (ReadBook.chapterChanged) {
             // 有章节跳转不同步阅读进度
             ReadBook.chapterChanged = false
-        } else if (!isSameBook || !BaseReadAloudService.isRun) {
+        } else if (!(isSameBook && BaseReadAloudService.isRun) && ReadBook.inBookshelf) {
             if (AppConfig.syncBookProgressPlus) {
                 ReadBook.syncProgress({ progress -> ReadBook.callBack?.sureNewProgress(progress) })
             } else {
@@ -254,6 +263,9 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
             AppLog.put("拉取阅读进度失败《${book.name}》\n${it.localizedMessage}", it)
         }.onSuccess { progress ->
             progress ?: return@onSuccess
+            if (progress.durChapterIndex == book.durChapterIndex && progress.durChapterPos == book.durChapterPos) {
+                return@onSuccess
+            }
             if (progress.durChapterIndex < book.durChapterIndex ||
                 (progress.durChapterIndex == book.durChapterIndex
                         && progress.durChapterPos < book.durChapterPos)
@@ -262,6 +274,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
             } else if (progress.durChapterIndex < book.simulatedTotalChapterNum()) {
                 ReadBook.setProgress(progress)
                 AppLog.put("自动同步阅读进度成功《${book.name}》 ${progress.durChapterTitle}")
+                context.toastOnUi("已同步最新阅读进度")
             }
         }
     }

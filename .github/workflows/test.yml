@@ -75,9 +75,13 @@ jobs:
               IS_MERGE_PR=true
             fi
           fi
+
           CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null)
           UPDATE_LOG_CHANGED=$(echo "$CHANGED_FILES" | grep -q "app/src/main/assets/updateLog.md" && echo "yes" || echo "no")
           CRONET_JSON_CHANGED=$(echo "$CHANGED_FILES" | grep -q "app/src/main/assets/cronet.json" && echo "yes" || echo "no")
+
+          echo "DEBUG: CHANGED_FILES=$CHANGED_FILES"
+
           if [ "$UPDATE_LOG_CHANGED" = "yes" ] && [ "$CRONET_JSON_CHANGED" = "no" ]; then
             echo "updated=yes" >> $GITHUB_OUTPUT
             if [ -f "app/src/main/assets/updateLog.md" ]; then
@@ -94,22 +98,35 @@ jobs:
                 UPDATED_CONTENT=$(head -n 10 app/src/main/assets/updateLog.md)
               fi
             fi
+            echo "DEBUG: UPDATED_CONTENT (from updateLog.md)="
+            echo "$UPDATED_CONTENT"
           elif [ "$IS_MERGE_PR" = true ]; then
               UPDATED_CONTENT="$COMMIT_MSG"
+              echo "DEBUG: UPDATED_CONTENT (from commit msg)=$UPDATED_CONTENT"
           else
             if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
-              COMMIT_RANGE="${{ github.event.before }}..${{ github.event.after }}"
+              BEFORE_SHA="${{ github.event.before }}"
+              AFTER_SHA="${{ github.event.after }}"
+              COMMIT_RANGE="$BEFORE_SHA..$AFTER_SHA"
+              echo "DEBUG: COMMIT_RANGE=$COMMIT_RANGE"
               if git rev-parse "$COMMIT_RANGE" >/dev/null 2>&1; then
                 UPDATED_CONTENT=$(git log $COMMIT_RANGE --pretty=format:"• %s" --reverse 2>/dev/null | grep -v "^• Merge" || echo "• $COMMIT_MSG")
+                echo "DEBUG: UPDATED_CONTENT (from commit range) set"
               else
                 UPDATED_CONTENT=$(git log -10 --pretty=format:"• %s (%h)" --reverse 2>/dev/null | grep -v "^• Merge")
+                echo "DEBUG: UPDATED_CONTENT (from recent logs) set"
               fi
+              echo "$UPDATED_CONTENT"
             fi
           fi
+
           if [ -z "$UPDATED_CONTENT" ]; then
+            echo "DEBUG: fallback to last commit body"
             UPDATED_CONTENT=$(git log -1 --pretty=%B)
           fi
+
           CONTENT_JSON=$(echo "$UPDATED_CONTENT" | jq -Rs . 2>/dev/null || echo "\"Error generating update content\"")
+          echo "DEBUG: CONTENT_JSON=$CONTENT_JSON"
           echo "body=$CONTENT_JSON" >> $GITHUB_OUTPUT
       - id: set-matrix
         run: |
@@ -196,7 +213,7 @@ jobs:
           done
 
       - name: Upload Missing Rules File To Artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: legado.${{ env.product }}.${{ env.type }}.mapping.missing_rules
           if-no-files-found: ignore
@@ -215,14 +232,14 @@ jobs:
           fi
 
       - name: Upload App To Artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: legado.${{ env.product }}.${{ env.type }}
           if-no-files-found: ignore
           path: ${{ github.workspace }}/apk/*.apk
 
       - name: Upload Mapping File To Artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: legado.${{ env.product }}.${{ env.type }}.mapping
           if-no-files-found: ignore
@@ -238,7 +255,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 1
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           path: apk/
 
@@ -312,7 +329,7 @@ jobs:
       LANZOU_URL: ${{ secrets.LANZOU_URL }}
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           path: apk/
       - working-directory: apk/
@@ -329,7 +346,7 @@ jobs:
     if: github.event_name != 'pull_request' && needs.prepare.outputs.telegram == 'yes'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           path: apk/
       - id: set-tags
@@ -372,7 +389,7 @@ jobs:
     if: github.event_name != 'pull_request' && needs.prepare.outputs.gitee == 'yes'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           path: apk/
       - working-directory: apk/
@@ -437,42 +454,52 @@ jobs:
           # 创建新Release，带重试机制
           MAX_RETRIES=3
           RETRY_COUNT=0
-          RELEASE_CREATED=false
           RELEASE_ID=""
+          RELEASE_JSON=""
           while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ -z "$RELEASE_ID" ]; do
-            RELEASE_JSON=$(curl -sX POST \
-              -H "Content-Type: application/json" \
-              -H "$AUTH_HEADER" \
-              -d '{
-                "tag_name": "'"$TAG_NAME"'",
-                "name": "'"$RELEASE_NAME"'",
-                "body": "'"${UPDATE_CONTENT//\"/\\\"}"'",
-                "target_commitish": "main",
-                "prerelease": '"$PRERELEASE"'
-              }' \
-              "$API_BASE/releases")
+            set +e
+            RELEASE_JSON=$(curl -sS --fail --tlsv1.2 --retry 3 --retry-delay 5 --retry-connrefused --connect-timeout 10 -X POST \
+                -H "Content-Type: application/json" \
+                -H "$AUTH_HEADER" \
+                -d '{
+                  "tag_name": "'"$TAG_NAME"'",
+                  "name": "'"$RELEASE_NAME"'",
+                  "body": "'"${UPDATE_CONTENT//\"/\\\"}"'",
+                  "target_commitish": "main",
+                  "prerelease": '"$PRERELEASE"'
+                }' \
+                "$API_BASE/releases")
+            CURL_EXIT=$?
+            set -e
 
-            if [ $? -eq 0 ] && [ -n "$RELEASE_JSON" ]; then
+            if [ "${CURL_EXIT:-1}" -eq 0 ] && [ -n "$RELEASE_JSON" ]; then
               RELEASE_ID=$(echo "$RELEASE_JSON" | jq -r '.id // empty')
-              RELEASE_CREATED=true
             else
               RETRY_COUNT=$((RETRY_COUNT+1))
               echo "⚠️  第 $RETRY_COUNT 次重试创建Release..."
               sleep 5
             fi
           done
-          # 检查是否成功创建Release
+
           if [ -z "$RELEASE_ID" ]; then
             echo "❌ 创建Release失败，跳过文件上传"
             exit 1
           fi
+
           # 上传所有APK文件
           for APK_FILE in apk/*.apk; do
-            curl -sX POST \
+            set +e
+            curl -sS --fail --tlsv1.2 --retry 2 --retry-delay 3 --connect-timeout 10 -X POST \
               -H "$AUTH_HEADER" \
               -F "file=@$APK_FILE" \
               "$API_BASE/releases/$RELEASE_ID/attach_files"
-            echo "✅ 已上传 $APK_FILE"
+            CURL_EXIT=$?
+            set -e
+            if [ $CURL_EXIT -eq 0 ]; then
+              echo "✅ 已上传 $APK_FILE"
+            else
+              echo "❌ 上传 $APK_FILE 失败 (curl exit $CURL_EXIT)"
+            fi
           done
 
   update-storage:
@@ -480,7 +507,7 @@ jobs:
     if: github.event_name != 'pull_request'&& needs.prepare.outputs.sgithub == 'yes' && needs.prepare.outputs.updateLog_updated == 'yes'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: legado.app.releaseS
           path: ./apk-releaseS

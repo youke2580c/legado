@@ -156,8 +156,13 @@ object BookChapterList {
             }
         }
         val replaceRules = ContentProcessor.get(book).getTitleReplaceRules()
+        val replaceBook = book.toReplaceBook()
         book.durChapterTitle = list.getOrElse(book.durChapterIndex) { list.last() }
-            .getDisplayTitle(replaceRules, book.getUseReplaceRule())
+            .getDisplayTitle(
+                replaceRules,
+                book.getUseReplaceRule(),
+                replaceBook = replaceBook
+            )
         if (book.totalChapterNum < list.size) {
             book.lastCheckCount = list.size - book.totalChapterNum
             book.latestChapterTime = System.currentTimeMillis()
@@ -166,7 +171,11 @@ object BookChapterList {
         book.totalChapterNum = list.size
         book.latestChapterTitle =
             list.getOrElse(book.simulatedTotalChapterNum() - 1) { list.last() }
-                .getDisplayTitle(replaceRules, book.getUseReplaceRule())
+                .getDisplayTitle(
+                    replaceRules,
+                    book.getUseReplaceRule(),
+                    replaceBook = replaceBook
+                )
         currentCoroutineContext().ensureActive()
         upChapterInfo(list, book)
         return list
@@ -304,10 +313,12 @@ object BookChapterList {
                 map["${chapter.index}_${chapter.title}"] = Triple(chapter.wordCount, chapter.variable, chapter.imgUrl)
             }
             for (chapter in list) {
-                map["${chapter.index}_${chapter.title}"]?.let { info ->
-                    chapter.wordCount = info.first
-                    chapter.variable = info.second
-                    chapter.imgUrl = info.third
+                map["${chapter.index}_${chapter.title}"]?.let { (w, v, i) ->
+                    chapter.run {
+                        w?.let { wordCount = it }
+                        v?.let { variable = it }
+                        i?.let { imgUrl = it }
+                    }
                 }
             }
         }

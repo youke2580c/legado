@@ -39,7 +39,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import splitties.init.appCtx
@@ -126,12 +126,13 @@ class CoverImageView @JvmOverloads constructor(
     private fun generateCoverAsync(pathName: String, name: String, author: String?, asyncAwait: Boolean) {
         currentJob?.cancel()
         currentJob = CoroutineScope(Dispatchers.Default).launch {
-            if (asyncAwait) {
-                withTimeoutOrNull(2000) {
-                    triggerChannel.receive()
-                }
-            }
             try {
+                if (asyncAwait) {
+                    withTimeoutOrNull(1200) {
+                        triggerChannel.receive()
+                    }
+                    ensureActive()
+                }
                 if (width == 0) {
                     var attempts = 0
                     do {
@@ -139,23 +140,20 @@ class CoverImageView @JvmOverloads constructor(
                         attempts++
                     } while (width == 0 && attempts < 2000)
                 }
-                if (!isActive) return@launch
+                ensureActive()
                 val bitmap = generateCoverBitmap(name, author)
-                if (!isActive) return@launch
-                nameBitmapCache.put(pathName + width, bitmap)
+                ensureActive()
                 needNameBitmap.put(bitmapPath.toString(), true)
+                nameBitmapCache.put(pathName + width, bitmap)
                 invalidate()
-            } catch (e: CancellationException) {
-                // 正常取消处理
+            } catch (_: CancellationException) {
             } catch (e: Exception) {
                 e.printStackTrace()
-            } finally {
-                currentJob = null
             }
         }
     }
 
-    fun generateCoverBitmap(name: String?, author: String?): Bitmap {
+    private fun generateCoverBitmap(name: String?, author: String?): Bitmap {
         viewWidth = width.toFloat()
         viewHeight = height.toFloat()
         val bitmap = createBitmap(width, height)
@@ -257,6 +255,7 @@ class CoverImageView @JvmOverloads constructor(
                 currentJob?.cancel()
                 currentJob = null
                 needNameBitmap.remove(bitmapPath.toString())
+                invalidate()
                 return false
             }
 
@@ -304,7 +303,7 @@ class CoverImageView @JvmOverloads constructor(
                 .centerCrop()
                 .into(this)
         } else {
-            if (currentName != null) {
+            if (drawBookName && currentName != null) {
                 val pathName = if (drawBookAuthor){
                     currentName + currentAuthor
                 } else {

@@ -125,6 +125,7 @@ data class BookChapter(
         replaceRules: List<ReplaceRule>? = null,
         useReplace: Boolean = true,
         chineseConvert: Boolean = true,
+        replaceBook: ReplaceBook? = null
     ): String {
         var displayTitle = title.replace(AppPattern.rnRegex, "")
         if (chineseConvert) {
@@ -139,10 +140,12 @@ data class BookChapter(
                     try {
                         val mDisplayTitle = if (item.isRegex) {
                             displayTitle.replace(
+                                item.name,
                                 item.regex,
                                 item.replacement,
                                 item.getValidTimeoutMillisecond(),
-                                this@BookChapter
+                                this@BookChapter,
+                                replaceBook
                             )
                         } else {
                             displayTitle.replace(item.pattern, item.replacement)
