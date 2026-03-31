@@ -8,6 +8,7 @@ import android.text.TextPaint
 import android.text.style.ForegroundColorSpan
 import android.text.style.ImageSpan
 import android.text.style.RelativeSizeSpan
+import android.text.style.ReplacementSpan
 import android.text.style.URLSpan
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
@@ -55,6 +56,9 @@ import io.legado.app.utils.StringUtils
 import androidx.core.text.parseAsHtml
 import androidx.core.util.component1
 import androidx.core.util.component2
+import io.legado.app.help.TextViewTagHandler
+import io.legado.app.help.TextViewTagHandler.Companion.HR_PLACE_CHAR
+import io.legado.app.help.TextViewTagHandler.Companion.HR_PLACE_STR
 import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.paramPattern
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.TextBaseColumn
@@ -74,6 +78,7 @@ class TextChapterLayout(
     private var listener: LayoutProgressListener? = textChapter
 
     private val paddingLeft = ChapterProvider.paddingLeft
+    private val paddingRight = ChapterProvider.paddingRight
     private val paddingTop = ChapterProvider.paddingTop
 
     private val titlePaint = ChapterProvider.titlePaint
@@ -146,21 +151,6 @@ class TextChapterLayout(
         job.start()
     }
 
-    fun setProgressListener(l: LayoutProgressListener?) {
-        try {
-            if (isCompleted) {
-                // no op
-            } else if (exception != null) {
-                l?.onLayoutException(exception!!)
-            } else {
-                listener = l
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            AppLog.put("调用布局进度监听回调出错\n${e.localizedMessage}", e)
-        }
-    }
-
     fun cancel() {
         job.cancel()
         listener = null
@@ -228,7 +218,6 @@ class TextChapterLayout(
         val contents = bookContent.textList
         val imageStyle = book.getImageStyle()
         val isSingleImageStyle = imageStyle.equals(Book.imgStyleSingle, true)
-        val isTextImageStyle = imageStyle.equals(Book.imgStyleText, true)
 
         if (titleMode != 2 || bookChapter.isVolume || contents.isEmpty()) {
             var firstLine = true
@@ -247,7 +236,7 @@ class TextChapterLayout(
                 } else {
                     val urlMatcher = paramPattern.matcher(titleImg)
                     var click: String? = null
-                    var iStyle: String? = null
+                    var style: String? = null
                     var imgSize = ImageProvider.getImageSize(book, titleImg, ReadBook.bookSource)
                     if (urlMatcher.find()) {
                         var width: String? = null
@@ -256,7 +245,7 @@ class TextChapterLayout(
                             ?.let { map ->
                                 map.forEach { (key, value) ->
                                     when (key) {
-                                        "style" -> iStyle = value
+                                        "style" -> style = value
                                         "width" -> width = value
                                         "click" -> click = value
                                     }
@@ -277,14 +266,14 @@ class TextChapterLayout(
                             }
                         }
                     }
-                    if (iStyle == null) {
-                        iStyle = if (imgSize.width < 80 && imgSize.height < 80) {
+                    if (style == null) {
+                        style = if (imgSize.width < 80 && imgSize.height < 80) {
                             "text"
                         } else {
                             imageStyle
                         }
                     }
-                    when (iStyle) {
+                    when (style) {
                         "text" -> {
                             srcList.add(titleImg)
                             clickList.add(click)
@@ -300,7 +289,7 @@ class TextChapterLayout(
                                 book,
                                 titleImg,
                                 contentPaintTextHeight,
-                                iStyle,
+                                style,
                                 imgSize,
                                 click
                             )
@@ -332,6 +321,8 @@ class TextChapterLayout(
             }
         }
 
+        val isTextImageStyle = imageStyle.equals(Book.imgStyleText, true)
+
         val sb = StringBuffer()
         var isSetTypedImage = false
         var wordCount = 0
@@ -343,8 +334,11 @@ class TextChapterLayout(
                     prepareNextPageIfNeed()
                     return@forEach
                 } else if (text.startsWith("<usehtml>")) {
-                    setTypeHtml(imageStyle, book, text.substring(9, text.lastIndexOf("<")))
-                    return@forEach
+                    val endInt = text.lastIndexOf("<")
+                    if (endInt > 9) {
+                        setTypeHtml(imageStyle, book, text.substring(9, endInt))
+                        return@forEach
+                    }
                 }
             }
             var text = content.replace(srcReplaceChar, srcReplacementChar)
@@ -387,7 +381,7 @@ class TextChapterLayout(
                     while (matcher.find()) {
                         currentCoroutineContext().ensureActive()
                         val imgSrc = matcher.group(1)!!
-                        var iStyle: String? = null
+                        var style: String? = null
                         var click: String? = null
                         var imgSize = ImageProvider.getImageSize(book, imgSrc, ReadBook.bookSource)
                         val urlMatcher = paramPattern.matcher(imgSrc)
@@ -397,7 +391,7 @@ class TextChapterLayout(
                             GSON.fromJsonObject<Map<String, String>>(urlOptionStr).getOrNull()?.let { map ->
                                 map.forEach { (key, value) ->
                                     when (key) {
-                                        "style" -> iStyle = value
+                                        "style" -> style = value
                                         "width" -> width = value
                                         "click" -> click = value
                                     }
@@ -418,8 +412,8 @@ class TextChapterLayout(
                                 }
                             }
                         }
-                        if (iStyle == null) {
-                            iStyle = if (imgSize.width < 80 && imgSize.height < 80) {
+                        if (style == null) {
+                            style = if (imgSize.width < 80 && imgSize.height < 80) {
                                 "text"
                             } else {
                                 imageStyle
@@ -428,7 +422,7 @@ class TextChapterLayout(
                         if (start < matcher.start()) {
                             sb.append(text.subSequence(start, matcher.start()))
                         }
-                        when (iStyle) {
+                        when (style) {
                             "TEXT" -> {
                                 sb.append(reviewChar)
                                 srcList.add(imgSrc)
@@ -461,7 +455,7 @@ class TextChapterLayout(
                                     book,
                                     imgSrc,
                                     contentPaintTextHeight,
-                                    iStyle,
+                                    style,
                                     imgSize,
                                     click
                                 )
@@ -608,7 +602,8 @@ class TextChapterLayout(
         book: Book,
         htmlContent: String,
     ) {
-        val spanned = htmlContent.parseAsHtml(HtmlCompat.FROM_HTML_MODE_COMPACT)
+        val textViewTagHandler = TextViewTagHandler()
+        val spanned = htmlContent.parseAsHtml(HtmlCompat.FROM_HTML_MODE_COMPACT, tagHandler = textViewTagHandler)
         val width = visibleWidth
         val textPaint = contentPaint
         val textColor = ReadBookConfig.textColor
@@ -671,16 +666,16 @@ class TextChapterLayout(
                     val charWidth = tempPaint.measureText(char)
                     charX + charWidth
                 }
-                var addedImage = false
+                var needAddText = true
                 spanned.getSpans(charIndex, charIndex + 1, ImageSpan::class.java).firstOrNull()?.let { span -> //处理图片
                     val source = span.source ?: return@let
                     val urlMatcher = paramPattern.matcher(source)
                     if (urlMatcher.find()) {
                         val urlOptionStr = source.substring(urlMatcher.end())
-                        val style = GSON.fromJsonObject<Map<String, String>>(urlOptionStr).getOrNull() ?: return@let
-                        var iStyle = style["style"]
-                        val width = style["width"]
-                        val click = style["click"]
+                        val urlOption = GSON.fromJsonObject<Map<String, String>>(urlOptionStr).getOrNull() ?: return@let
+                        var iStyle = urlOption["style"]
+                        val width = urlOption["width"]
+                        val click = urlOption["click"]
                         var imgSize = ImageProvider.getImageSize(book, source, ReadBook.bookSource)
                         width?.let {
                             if (width.endsWith("%")) {
@@ -737,9 +732,24 @@ class TextChapterLayout(
                             null
                         )
                     }
-                    addedImage = true
+                    needAddText = false
                 }
-                if (!addedImage) {
+                spanned.getSpans(charIndex, charIndex + 1, ReplacementSpan::class.java).firstOrNull()?.let { _ -> //自定义标签
+                    if (char == HR_PLACE_CHAR) {
+                        columns.add(
+                            TextHtmlColumn(
+                                absStartX.toFloat(),
+                                (absStartX + width - paddingRight).toFloat(),
+                                HR_PLACE_STR,
+                                textSize,
+                                textColor,
+                                linkUrl
+                            )
+                        )
+                        needAddText = false
+                    }
+                }
+                if (needAddText) {
                     columns.add(
                         TextHtmlColumn(
                             absStartX + charX,
@@ -801,12 +811,12 @@ class TextChapterLayout(
         }
 
         if (spaceCount > 1) {
-            // 多个空格：调整单词间距
+            // 多个空格：调整空格间距
             val spaceIncrement = residualWidth / spaceCount
             textLine.wordSpacing = spaceIncrement
 
             // 重新计算字符位置
-            var currentX = columns[0].start
+            var currentX = firstCol.start
             for (i in columns.indices) {
                 val col = columns[i]
                 val width = col.end - col.start
@@ -815,12 +825,12 @@ class TextChapterLayout(
                     // 空格，增加额外的间距
                     col.start = currentX
                     col.end = currentX + width + spaceIncrement
-                    currentX = col.start
+                    currentX = col.end
                 } else {
                     // 非空格或最后一个字符
                     col.start = currentX
                     col.end = currentX + width
-                    currentX = col.start
+                    currentX = col.end
                 }
 
                 textLine.addColumn(col)
@@ -830,7 +840,7 @@ class TextChapterLayout(
             val gapCount = columns.lastIndex
             if (gapCount > 0) {
                 val charIncrement = residualWidth / gapCount
-                var currentX = columns[0].start
+                var currentX = firstCol.start
                 for (i in columns.indices) {
                     val col = columns[i]
                     val width = col.end - col.start

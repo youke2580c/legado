@@ -494,12 +494,14 @@ object VideoPlay : CoroutineScope by MainScope(){
         val durVolumeIndex = durVolumeIndex
         val chapterInVolumeIndex = chapterInVolumeIndex
         val source = source
-        val volumes = volumes
+        val volumes = volumes.toList()
         val durVolume = durVolume
+        val toc = toc
         Coroutine.async {
             book?.let { book ->
                 book.lastCheckCount = 0
-                book.durChapterTime = System.currentTimeMillis()
+                val durTime = System.currentTimeMillis()
+                book.durChapterTime = durTime
                 book.durVolumeIndex = durVolumeIndex
                 book.chapterInVolumeIndex = chapterInVolumeIndex
                 val durChapterIndex = if (volumes.isEmpty()) chapterInVolumeIndex else
@@ -509,7 +511,7 @@ object VideoPlay : CoroutineScope by MainScope(){
                 val chapter = toc?.getOrNull(durChapterIndex)
                 videoTitle = chapter?.title
                 book.durChapterTitle = chapter?.title
-                SourceCallBack.callBackBook(SourceCallBack.SAVE_READ, source as BookSource?, book, chapter)
+                SourceCallBack.callBackBook(SourceCallBack.SAVE_READ, source as BookSource?, book, chapter, durTime.toString())
                 book.update()
             }
             rssStar?.let {
